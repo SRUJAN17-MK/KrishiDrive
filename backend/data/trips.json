@@ -1,20 +1,5 @@
 [
   {
-    "id": "T003",
-    "request": "TR001",
-    "driver": "driver1",
-    "vehicle": "V001",
-    "pickup": "Nashik, Maharashtra",
-    "destination": "Mumbai, Maharashtra",
-    "cargo": "Tomatoes (5000 kg)",
-    "status": "scheduled",
-    "distance_km": 206,
-    "fuel_estimate": 37.1,
-    "eta_hours": 4.6,
-    "earnings": 5768,
-    "started_at": "2026-11-02T17:34:52.148Z"
-  },
-  {
     "id": "T001",
     "request": "TR002",
     "driver": "driver1",

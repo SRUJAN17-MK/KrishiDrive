@@ -1,432 +1,267 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
-  Truck, Plus, X, MapPin, Brain, Filter, Check,
-  Calendar, Clock, Trash2, ShieldCheck, Star, ArrowRight,
-  TrendingUp, AlertCircle
+  Truck, Plus, X, MapPin, Brain, Trash2, Calendar, Clock,
+  ShieldCheck, Star, AlertCircle, RefreshCw, CheckCircle2
 } from 'lucide-react'
-import { api } from '../services/api'
+import { api, OfflineQueuedError } from '../services/api'
+import { useLanguage } from '../context/LanguageContext'
+import { PageHeader, LoadingBlock, EmptyState, StatusBadge } from '../components/ui'
+import { formatINR } from '../utils/currency'
 import toast from 'react-hot-toast'
 
+const crops = ['Tomato', 'Wheat', 'Rice', 'Grapes', 'Onion', 'Potato', 'Corn', 'Sugarcane', 'Cotton', 'Other produce']
+const vehicles = ['Truck (10-Ton)', 'Tempo (3-Ton)', 'Mini Truck (2.5-Ton)', 'Trailer (20-Ton)']
+
+const initialForm = {
+  crop: 'Tomato',
+  quantity: '5000',
+  unit: 'kg',
+  pickup: 'Nashik, Maharashtra',
+  destination: 'Vashi APMC Market, Mumbai',
+  vehicle_type: 'Truck (10-Ton)',
+  pickup_date: new Date().toISOString().split('T')[0],
+  preferred_time: '06:00 AM'
+}
+
+const inputClass = 'w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500'
+
+function Field({ label, children }) {
+  return <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{label}<div className="mt-1">{children}</div></label>
+}
+
 export default function FarmerTransport() {
+  const { t } = useLanguage()
   const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState(initialForm)
+  const [filter, setFilter] = useState('all')
   const [matchResult, setMatchResult] = useState(null)
   const [matchLoading, setMatchLoading] = useState(false)
-  const [activeReqId, setActiveReqId] = useState(null)
-  const [filter, setFilter] = useState('all')
+  const [activeReq, setActiveReq] = useState(null)
+  const [bookingKey, setBookingKey] = useState('')
 
-  const [form, setForm] = useState({
-    crop: 'Tomatoes',
-    quantity: '5000',
-    unit: 'kg',
-    pickup: 'Nashik, Maharashtra',
-    destination: 'Vashi APMC Market, Mumbai',
-    vehicle_type: 'Truck (10-Ton)',
-    pickup_date: new Date().toISOString().split('T')[0],
-    preferred_time: '06:00 AM'
-  })
-
-  const crops = ['Tomatoes', 'Wheat', 'Rice', 'Grapes', 'Onions', 'Potatoes', 'Corn', 'Sugarcane', 'Cotton', 'Produce']
-  const vehicles = ['Truck (10-Ton)', 'Tempo (3-Ton)', 'Mini Truck (2.5-Ton)', 'Heavy Trailer (20-Ton)']
-
-  useEffect(() => {
-    fetchRequests()
-  }, [])
-
-  const fetchRequests = async () => {
+  const load = async () => {
+    setLoading(true)
+    setError('')
     try {
-      const data = await api.transport.requests()
-      setRequests(data || [])
+      setRequests(await api.transport.requests())
     } catch (err) {
-      toast.error('Failed to load transport dispatches')
+      setError(err.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
+  useEffect(() => { load() }, [])
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const submit = async (event) => {
+    event.preventDefault()
+    setSaving(true)
     try {
-      const tr = await api.transport.create({
-        ...form,
-        quantity: parseFloat(form.quantity) || 1000
-      })
-      setRequests([tr, ...requests])
+      const created = await api.transport.create({ ...form, quantity: Number(form.quantity) })
+      setRequests((prev) => [created, ...prev])
       setShowForm(false)
-      toast.success('Transport dispatch request registered!')
+      setForm(initialForm)
+      toast.success('Transport request created')
     } catch (err) {
-      toast.error(err.message || 'Creation failed')
+      if (err instanceof OfflineQueuedError) {
+        toast.success(t('common.offlineQueued'))
+        setShowForm(false)
+      } else {
+        toast.error(err.message)
+      }
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Cancel this transport request?')) return
+  const remove = async (request) => {
+    if (!window.confirm(`Cancel the ${request.crop} request?`)) return
     try {
-      await api.transport.delete(id)
-      setRequests(requests.filter(r => r.id !== id))
-      toast.success('Transport request cancelled')
-      if (activeReqId === id) setMatchResult(null)
+      await api.transport.delete(request.id)
+      setRequests((prev) => prev.filter((item) => item.id !== request.id))
+      toast.success('Request cancelled')
     } catch (err) {
-      toast.error(err.message || 'Failed to cancel request')
+      toast.error(err.message)
     }
   }
 
-  const matchDrivers = async (req) => {
-    setActiveReqId(req.id)
-    setMatchLoading(true)
+  const findMatches = async (request) => {
+    setActiveReq(request)
     setMatchResult(null)
+    setMatchLoading(true)
     try {
       const result = await api.ai.transportMatching({
-        crop_type: req.crop,
-        quantity: req.quantity,
-        pickup: req.pickup,
-        destination: req.destination
+        crop_type: request.crop,
+        quantity: request.quantity,
+        pickup: request.pickup,
+        destination: request.destination
       })
-      setMatchResult({ ...result, request: req })
-      toast.success(`Matched ${result.matches?.length || 0} local haulers`)
+      setMatchResult(result)
     } catch (err) {
-      toast.error(err.message || 'Matching failed')
+      toast.error(err.message)
     } finally {
       setMatchLoading(false)
     }
   }
 
-  // BUG-01 FIXED: Passing matched driver_username so driver is assigned properly
-  const bookMatchedDriver = async (requestId, vehicleId, driverUsername) => {
+  const book = async (match) => {
+    if (!match.driver) return
+    const key = match.vehicle.id
+    setBookingKey(key)
     try {
       await api.transport.accept({
-        request_id: requestId,
-        vehicle_id: vehicleId,
-        driver_username: driverUsername
+        request_id: activeReq.id,
+        vehicle_id: match.vehicle.id,
+        driver_username: match.driver.username
       })
-      const updated = await api.transport.requests()
-      setRequests(updated)
+      toast.success('Hauler booked and trip scheduled')
       setMatchResult(null)
-      toast.success('Transport confirmed! Hauler notified and trip scheduled.')
+      setActiveReq(null)
+      await load()
     } catch (err) {
-      toast.error(err.message || 'Booking failed')
+      toast.error(err.message)
+    } finally {
+      setBookingKey('')
     }
   }
 
-  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
+  const filtered = filter === 'all' ? requests : requests.filter((request) => request.status === filter)
 
   return (
-    <div className="space-y-6 fade-in max-w-7xl mx-auto">
-      {/* Page Title & Add Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
-            Smart Transport Booking
-          </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Dispatch your harvest directly to wholesale mandis with AI-matched verified haulers.
-          </p>
-        </div>
+    <div>
+      <PageHeader
+        eyebrow="Dispatch"
+        title={t('nav.transport')}
+        subtitle="Book a real transport request, then compare available haulers. Matching is deterministic scoring, not AI inference."
+        actions={<button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-4 py-2 text-xs font-bold text-white"><Plus size={15} /> New request</button>}
+      />
 
-        <button
-          onClick={() => setShowForm(true)}
-          className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow transition flex items-center justify-center gap-2 text-sm"
-        >
-          <Plus size={16} /> New Freight Request
-        </button>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-wrap gap-2 mb-5">
         {[
-          { id: 'all', label: 'All Dispatches' },
-          { id: 'pending', label: 'Pending Match' },
-          { id: 'matched', label: 'Hauler Assigned' },
-          { id: 'delivered', label: 'Delivered' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setFilter(tab.id)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-              filter === tab.id
-                ? 'bg-emerald-700 text-white shadow-sm'
-                : 'bg-white dark:bg-[#12211c] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-[#1e362e] hover:bg-gray-100 dark:hover:bg-[#1c352c]'
-            }`}
-          >
-            {tab.label}
-          </button>
+          { id: 'all', label: 'All' },
+          { id: 'pending', label: t('status.pending') },
+          { id: 'matched', label: t('status.matched') },
+          { id: 'in_transit', label: t('status.in_transit') },
+          { id: 'delivered', label: t('status.delivered') }
+        ].map((tab) => (
+          <button key={tab.id} onClick={() => setFilter(tab.id)} className={`rounded-xl px-3 py-1.5 text-xs font-bold border ${filter === tab.id ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white dark:bg-[#12211c] border-gray-200 dark:border-[#1e362e] text-gray-600 dark:text-gray-300'}`}>{tab.label}</button>
         ))}
       </div>
 
-      {/* Modal Form */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#12211c] rounded-3xl max-w-xl w-full p-6 border border-gray-200 dark:border-[#1e362e] shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-extrabold text-gray-900 dark:text-white text-lg">
-                Create Agricultural Transport Request
-              </h3>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={18} />
-              </button>
-            </div>
+      {loading && <LoadingBlock />}
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 mb-4">{error} <button onClick={load} className="font-bold underline">{t('common.retry')}</button></div>}
 
-            <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3.5">
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Crop / Commodity</label>
-                <select
-                  name="crop"
-                  value={form.crop}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {crops.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Quantity (kg)</label>
-                <input
-                  name="quantity"
-                  type="number"
-                  value={form.quantity}
-                  onChange={handleChange}
-                  required
-                  placeholder="e.g. 5000"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Farm Pickup Location</label>
-                <input
-                  name="pickup"
-                  value={form.pickup}
-                  onChange={handleChange}
-                  required
-                  placeholder="e.g. Farm Gate, Nashik, Maharashtra"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Destination Mandi / Market</label>
-                <input
-                  name="destination"
-                  value={form.destination}
-                  onChange={handleChange}
-                  required
-                  placeholder="e.g. Vashi APMC Terminal, Mumbai"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Preferred Vehicle Class</label>
-                <select
-                  name="vehicle_type"
-                  value={form.vehicle_type}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {vehicles.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Loading Date</label>
-                <input
-                  name="pickup_date"
-                  type="date"
-                  value={form.pickup_date}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="col-span-2 flex gap-3 pt-3">
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm transition"
-                >
-                  Submit Freight Request
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-5 py-2.5 border border-gray-200 dark:border-forest-800 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {!loading && filtered.length === 0 && (
+        <EmptyState title={t('farmer.noRequests')} body="Create a request with pickup, destination and quantity. No fake hauler availability is shown." action={<button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white"><Plus size={14} /> New request</button>} />
       )}
 
-      {/* Dispatches List */}
-      <div className="space-y-4">
-        {filtered.map(req => (
-          <div
-            key={req.id}
-            className="bg-white dark:bg-[#12211c] rounded-2xl border border-gray-200 dark:border-[#1e362e] p-5 card-hover transition-colors"
-          >
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold flex-shrink-0 mt-0.5">
-                  <Truck size={22} />
+      <div className="grid lg:grid-cols-2 gap-4">
+        {filtered.map((request) => (
+          <article key={request.id} className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-extrabold text-gray-900 dark:text-white">{request.crop}</h2>
+                  <span className="text-[10px] text-gray-400">{request.id}</span>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-gray-900 dark:text-white text-base">
-                      {req.crop} • {req.quantity?.toLocaleString()} {req.unit}
-                    </h3>
-                    <span className="text-[11px] text-gray-400">({req.id})</span>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    <MapPin size={13} className="text-emerald-600 dark:text-emerald-400" />
-                    <span>{req.pickup}</span>
-                    <span className="text-gray-400">→</span>
-                    <span className="font-semibold text-gray-800 dark:text-gray-200">{req.destination}</span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-400 mt-2">
-                    <span className="flex items-center gap-1"><Calendar size={11} /> {req.pickup_date}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1"><Clock size={11} /> {req.preferred_time || 'Morning'}</span>
-                    <span>•</span>
-                    <span>Vehicle: {req.vehicle_type}</span>
-                    {req.driver && (
-                      <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                        • Assigned Driver: {req.driver}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <p className="text-[11px] text-gray-500 mt-1 flex items-start gap-1"><MapPin size={12} className="mt-0.5 shrink-0" /> {request.pickup} → {request.destination}</p>
               </div>
-
-              <div className="flex items-center gap-3 self-end lg:self-center">
-                <div className="text-right">
-                  <div className="text-sm font-extrabold text-emerald-800 dark:text-emerald-300">
-                    ₹{(req.estimated_cost || 4500).toLocaleString()}
-                  </div>
-                  <div className="text-[10px] text-gray-400">Estimated Tariff</div>
-                </div>
-
-                <span className={`status-badge status-${req.status}`}>
-                  {req.status}
-                </span>
-
-                {req.status === 'pending' && (
-                  <button
-                    onClick={() => matchDrivers(req)}
-                    disabled={matchLoading}
-                    className="px-3 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                  >
-                    <Brain size={14} /> {matchLoading && activeReqId === req.id ? 'Finding...' : 'AI Match'}
-                  </button>
-                )}
-
-                {req.status === 'pending' && (
-                  <button
-                    onClick={() => handleDelete(req.id)}
-                    title="Cancel Dispatch"
-                    className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
+              <StatusBadge status={request.status} />
             </div>
-          </div>
+            <div className="grid grid-cols-3 gap-2 mt-3 text-[11px]">
+              <div><span className="text-gray-400">Quantity</span><p className="font-bold">{Number(request.quantity).toLocaleString()} {request.unit || 'kg'}</p></div>
+              <div><span className="text-gray-400">Pickup date</span><p className="font-bold">{request.pickup_date || '—'}</p></div>
+              <div><span className="text-gray-400">Est. cost</span><p className="font-bold">{request.estimated_cost != null ? formatINR(request.estimated_cost) : t('common.unavailable')}</p></div>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-[#1e362e]">
+              <div className="flex items-center gap-2">
+                {request.status === 'pending' && (
+                  <button onClick={() => findMatches(request)} disabled={matchLoading && activeReq?.id === request.id} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-50">
+                    {matchLoading && activeReq?.id === request.id ? <RefreshCw size={13} className="animate-spin" /> : <Brain size={13} />} {t('farmer.findTrucks')}
+                  </button>
+                )}
+                {request.driver && <span className="text-[10px] text-gray-500 inline-flex items-center gap-1"><Truck size={12} /> {request.driver}</span>}
+              </div>
+              <button onClick={() => remove(request)} aria-label={`Cancel ${request.id}`} className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg"><Trash2 size={14} /></button>
+            </div>
+            <p className="text-[9px] text-gray-400 mt-2">Cost is a quote formula based on quantity, not a live freight rate. Confirm with the driver.</p>
+          </article>
         ))}
-
-        {filtered.length === 0 && (
-          <div className="bg-white dark:bg-[#12211c] rounded-2xl p-12 text-center border border-gray-200 dark:border-[#1e362e]">
-            <Truck size={48} className="mx-auto text-amber-500/40 mb-3" />
-            <h3 className="font-bold text-gray-800 dark:text-gray-200 text-base">No transport dispatches found</h3>
-            <p className="text-xs text-gray-500 mt-1">Book your first hauler to transport harvested crops to APMC terminals.</p>
-          </div>
-        )}
       </div>
 
-      {/* AI Matched Drivers Panel */}
-      {matchResult && (
-        <div className="bg-gradient-to-br from-white via-purple-50/20 to-white dark:from-[#12211c] dark:via-[#191e2b] dark:to-[#12211c] rounded-3xl border border-purple-300/60 dark:border-purple-800/40 p-6 shadow-xl relative transition-all">
-          <div className="flex items-center justify-between pb-4 border-b border-purple-100 dark:border-purple-900/40 mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 flex items-center justify-center">
-                <Brain size={22} />
+      {activeReq && (
+        <section className="mt-6 rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-bold flex items-center gap-2"><Brain size={16} className="text-emerald-600" /> {t('farmer.matches')} · {activeReq.crop}</h2>
+            <button onClick={() => { setActiveReq(null); setMatchResult(null) }} className="p-1.5 text-gray-400" aria-label={t('common.close')}><X size={16} /></button>
+          </div>
+          {matchLoading && <LoadingBlock label="Scoring available vehicles…" />}
+          {matchResult && (
+            <>
+              <div className="flex flex-wrap gap-2 text-[10px] text-gray-500 mb-3">
+                <span>Base distance: {matchResult.estimated_base_distance_km ?? '—'} km</span>
+                <span>·</span>
+                <span>{matchResult.distance_note}</span>
               </div>
-              <div>
-                <h3 className="font-extrabold text-gray-900 dark:text-white text-base">
-                  AI-Ranked Verified Haulers for Request #{matchResult.request?.id}
-                </h3>
-                <div className="text-xs text-purple-700 dark:text-purple-400 mt-0.5">
-                  Algorithm: Multi-Criteria Hauler Scoring (Capacity, Proximity, Safety Rating)
-                </div>
+              {matchResult.matches.length === 0 && <p className="text-xs text-gray-500">{t('farmer.noMatches')}</p>}
+              <div className="grid md:grid-cols-2 gap-3">
+                {matchResult.matches.map((match) => (
+                  <div key={match.vehicle.id} className="rounded-xl border border-gray-200 dark:border-[#274a3d] p-3">
+                    <div className="flex justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold flex items-center gap-1.5"><Truck size={14} /> {match.vehicle.type} · {match.vehicle.number}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{match.driver ? `${match.driver.full_name} · ${match.driver.rating || 'N/A'}★ · ${match.driver.trips_completed || 0} trips` : 'No assigned driver'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-extrabold text-emerald-700 dark:text-emerald-400">{match.match_score}<span className="text-[10px] text-gray-400">/99</span></p>
+                        <p className="text-[10px] font-semibold">{match.estimated_cost_formatted}</p>
+                      </div>
+                    </div>
+                    <ul className="mt-2 space-y-0.5 text-[10px] text-gray-600 dark:text-gray-300">
+                      {match.reasons.map((reason) => <li key={reason}>• {reason}</li>)}
+                    </ul>
+                    {match.driver?.verified && <p className="mt-1 text-[10px] text-emerald-700 dark:text-emerald-400 inline-flex items-center gap-1"><ShieldCheck size={11} /> Driver verified</p>}
+                    <button
+                      onClick={() => book(match)}
+                      disabled={!match.driver || bookingKey === match.vehicle.id}
+                      className="mt-2 w-full rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 py-1.5 text-[11px] font-bold text-white inline-flex items-center justify-center gap-1.5"
+                    >
+                      {bookingKey === match.vehicle.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} {match.driver ? t('farmer.confirmBooking') : 'Driver required'}
+                    </button>
+                  </div>
+                ))}
               </div>
+              <p className="text-[10px] text-gray-400 mt-3">{matchResult.engine_info.note} Scores are indicative and not a safety certification.</p>
+            </>
+          )}
+        </section>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm grid place-items-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-label="New transport request">
+          <form onSubmit={submit} className="w-full max-w-xl rounded-2xl bg-white dark:bg-[#12211c] p-5 shadow-2xl my-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold">{t('farmer.bookTransport')}</h2>
+              <button type="button" onClick={() => setShowForm(false)} aria-label={t('common.close')} className="p-1.5 text-gray-400"><X size={17} /></button>
             </div>
-            <button
-              onClick={() => setMatchResult(null)}
-              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="space-y-3.5">
-            {matchResult.matches?.map((m, idx) => (
-              <div
-                key={idx}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white dark:bg-[#162a23] rounded-2xl border border-purple-100 dark:border-purple-900/40 shadow-sm"
-              >
-                <div className="flex items-start gap-3.5">
-                  <div className="w-11 h-11 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-black text-base flex-shrink-0">
-                    {m.driver?.full_name?.[0] || 'D'}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-gray-900 dark:text-white text-sm">{m.driver?.full_name}</span>
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full">
-                        <Star size={11} fill="currentColor" /> {m.driver?.rating}
-                      </span>
-                      {m.driver?.verified && (
-                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
-                          <ShieldCheck size={13} /> Verified
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {m.vehicle?.type} • Reg: {m.vehicle?.number} • Capacity: {m.vehicle?.capacity?.toLocaleString()} kg
-                    </div>
-
-                    <div className="text-[11px] text-purple-700 dark:text-purple-400 font-medium mt-1">
-                      {m.distance_to_pickup_km} km away from your farm gate
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 self-end sm:self-center">
-                  <div className="text-right">
-                    <div className="text-base font-black text-emerald-700 dark:text-emerald-400">
-                      {m.estimated_cost_formatted}
-                    </div>
-                    <div className="text-[10px] text-gray-400">AI Match: {m.match_score}%</div>
-                  </div>
-
-                  <button
-                    onClick={() => bookMatchedDriver(matchResult.request.id, m.vehicle.id, m.driver.username)}
-                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition"
-                  >
-                    <Check size={14} /> Confirm Hauler
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-purple-100 dark:border-purple-900/40 flex items-center justify-between text-[11px] text-gray-400">
-            <span>Powered by Snapdragon NPU Multi-Criteria Engine</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Inference: {matchResult.model_info?.inference_time_ms}ms</span>
-          </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label={t('common.crop')}><select className={inputClass} value={form.crop} onChange={(e) => setForm({ ...form, crop: e.target.value })}>{crops.map((crop) => <option key={crop}>{crop}</option>)}</select></Field>
+              <Field label={`${t('common.quantity')} (kg)`}><input required type="number" min="1" className={inputClass} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
+              <Field label={t('farmer.pickup')}><input required maxLength={120} className={inputClass} value={form.pickup} onChange={(e) => setForm({ ...form, pickup: e.target.value })} /></Field>
+              <Field label={t('farmer.destination')}><input required maxLength={120} className={inputClass} value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} /></Field>
+              <Field label={t('farmer.vehicleType')}><select className={inputClass} value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value })}>{vehicles.map((vehicle) => <option key={vehicle}>{vehicle}</option>)}</select></Field>
+              <Field label={t('farmer.pickupDate')}><input type="date" className={inputClass} value={form.pickup_date} onChange={(e) => setForm({ ...form, pickup_date: e.target.value })} /></Field>
+            </div>
+            <p className="mt-3 text-[10px] text-gray-400 flex gap-1.5"><AlertCircle size={12} className="shrink-0 mt-0.5" /> Estimated cost is a quantity-based quote, not a live freight rate. A driver must accept before a trip exists.</p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button type="button" onClick={() => setShowForm(false)} className="rounded-xl border border-gray-200 dark:border-[#274a3d] px-4 py-2 text-xs font-semibold">{t('common.cancel')}</button>
+              <button type="submit" disabled={saving} className="rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 px-4 py-2 text-xs font-bold text-white">{saving ? t('common.loading') : t('common.submit')}</button>
+            </div>
+          </form>
         </div>
       )}
     </div>

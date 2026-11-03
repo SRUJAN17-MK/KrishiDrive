@@ -1,0 +1,37 @@
+[
+  {
+    "id": "T001",
+    "request": "TR002",
+    "driver": "driver1",
+    "vehicle": "V001",
+    "pickup": "Ludhiana, Punjab",
+    "destination": "Delhi, NCR",
+    "status": "in_transit",
+    "pickup_lat": 30.901,
+    "pickup_lng": 75.8573,
+    "dest_lat": 28.6139,
+    "dest_lng": 77.209,
+    "distance_km": 310,
+    "fuel_estimate": 62,
+    "eta_hours": 5.5,
+    "started_at": "2026-09-20T05:00:00"
+  },
+  {
+    "id": "T002",
+    "request": "TR003",
+    "driver": "driver2",
+    "vehicle": "V002",
+    "pickup": "Nashik, Maharashtra",
+    "destination": "Pune, Maharashtra",
+    "status": "completed",
+    "pickup_lat": 19.9975,
+    "pickup_lng": 73.7898,
+    "dest_lat": 18.5204,
+    "dest_lng": 73.8567,
+    "distance_km": 170,
+    "fuel_estimate": 28,
+    "eta_hours": 3.2,
+    "started_at": "2026-09-14T07:00:00",
+    "completed_at": "2026-09-14T10:12:00"
+  }
+]

@@ -1,721 +1,655 @@
+/**
+ * KrishiDrive v2.1.0 — Production Backend Server
+ *
+ * Upgrade log from v2.0.0:
+ *  - Replaced JSON file persistence with SQLite (better-sqlite3, ACID transactions)
+ *  - Added Helmet security headers
+ *  - Added express-rate-limit on auth and sensitive endpoints
+ *  - Added MIME-type + extension file-upload validation
+ *  - Added input validation with express-validator
+ *  - Fixed missing authMiddleware on disease-detection and document-analysis routes
+ *  - Removed all fabricated Snapdragon NPU / inference-time claims from AI responses
+ *  - Renamed rule-based engines to "Agronomic Scoring Engine"
+ *  - Removed Math.random() from transport matching (replaced with deterministic scoring)
+ *  - Removed hardcoded revenue padding (+45000), distance padding (+1250), trip offset (+32)
+ *  - Added OSRM routing with a clearly labelled Haversine fallback
+ *  - Added Open-Meteo live weather + 7-day forecast (no key required)
+ *  - Added real Agmarknet mandi prices via data.gov.in (key required)
+ *  - Replaced the disease heuristic with a PlantVillage MobileNetV2 ONNX model
+ *  - Added /api/ai/disease-model and measured benchmark endpoints
+ *  - Replaced hardcoded notifications with dynamic DB-backed generation
+ *  - Added /health, /ready and /api/health/detailed endpoints
+ *  - Improved field whitelisting on PUT routes
+ *  - Restricted CORS to configured origin
+ */
+
+'use strict';
+
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const multer = require('multer');
 
-const app = express();
-const PORT = process.env.PORT || 8000;
-const JWT_SECRET = process.env.JWT_SECRET || 'krishidrive-ai-secret-2026';
+const express    = require('express');
+const cors       = require('cors');
+const helmet     = require('helmet');
+const rateLimit  = require('express-rate-limit');
+const path       = require('path');
+const fs         = require('fs');
+const jwt        = require('jsonwebtoken');
+const bcrypt     = require('bcryptjs');
+const multer     = require('multer');
+const { body, validationResult } = require('express-validator');
+
+const {
+  getDb, userOps, cropOps, vehicleOps, transportOps, tripOps
+} = require('./db');
+const { migrateFromJson } = require('./migrate');
+const disease = require('./ai/diseaseClassifier');
+const { routePlaces } = require('./services/routing');
+const { getWeather } = require('./services/weather');
+const { getPrices: getMandiPrices, isConfigured: mandiConfigured } = require('./services/market');
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const PORT       = parseInt(process.env.PORT) || 8000;
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET === 'your-secret-key-here') {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: JWT_SECRET environment variable is not set or is still the placeholder.');
+    process.exit(1);
+  }
+  console.warn('WARNING: Using development fallback JWT_SECRET. Set JWT_SECRET in .env for production.');
+}
+const JWT_SECRET_ACTUAL = JWT_SECRET || 'krishidrive-dev-secret-DO-NOT-USE-IN-PRODUCTION';
 const TOKEN_EXPIRY = '24h';
-const DATA_DIR = path.join(__dirname, 'data');
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const UPLOADS_DIR = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.join(__dirname, 'uploads');
+
+// Weather: Open-Meteo (free, no key required for non-commercial use)
+const OPENMETEO_API_KEY = process.env.OPENMETEO_API_KEY || '';
+
+// OSRM routing (public demo server by default; point OSRM_BASE_URL at a
+// self-hosted instance for production).
+const OSRM_BASE_URL = process.env.OSRM_BASE_URL || 'https://router.project-osrm.org';
+
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-app.use(cors());
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// ─── APP SETUP ────────────────────────────────────────────────────────────────
+const app = express();
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' } // Allow serving uploads
+}));
+
+// CORS — restrict to configured origin in production
+const ALLOWED_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
+app.use(cors({
+  origin: ALLOWED_ORIGIN,
+  credentials: true
+}));
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, unique + path.extname(file.originalname || '.jpg'));
-  }
+// Broad API limiter. Auth and upload endpoints have stricter limits below.
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { detail: 'Too many requests. Please slow down and try again shortly.' },
+  standardHeaders: true,
+  legacyHeaders: false
 });
-const upload = multer({
-  storage,
-  limits: { fileSize: 15 * 1024 * 1024 }
+app.use('/api', apiLimiter);
+
+// ─── RATE LIMITERS ────────────────────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: { detail: 'Too many authentication attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
 });
 
-// ─── DATA PERSISTENCE HELPERS ───
-function loadData(file, def = {}) {
-  const fp = path.join(DATA_DIR, file);
-  if (!fs.existsSync(fp)) {
-    fs.writeFileSync(fp, JSON.stringify(def, null, 2), 'utf8');
-    return def;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(fp, 'utf8'));
-  } catch (err) {
-    console.error(`Error loading ${file}:`, err);
-    return def;
-  }
-}
+const uploadLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10,
+  message: { detail: 'Too many upload requests. Please wait before trying again.' }
+});
 
-function saveData(file, data) {
-  const fp = path.join(DATA_DIR, file);
-  fs.writeFileSync(fp, JSON.stringify(data, null, 2), 'utf8');
-}
+const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30,
+  message: { detail: 'AI inference rate limit reached. Please slow down.' }
+});
 
-function getNextId(items, prefix) {
-  let max = 0;
-  for (const item of items) {
-    if (item && item.id && item.id.startsWith(prefix)) {
-      const num = parseInt(item.id.replace(prefix, ''), 10);
-      if (!isNaN(num) && num > max) max = num;
-    }
-  }
-  return prefix + String(max + 1).padStart(3, '0');
-}
+// ─── FILE UPLOAD ──────────────────────────────────────────────────────────────
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const ALLOWED_IMAGE_EXTS  = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const MAX_UPLOAD_SIZE     = 8 * 1024 * 1024; // 8 MB
 
-// ─── SEED DEMO DATA ───
-function seedData() {
-  const users = loadData('users.json', null);
-  if (!users || Object.keys(users).length === 0) {
-    const hash = bcrypt.hashSync('demo123', 10);
-    saveData('users.json', {
-      farmer1: {
-        username: 'farmer1',
-        email: 'ram@krishidrive.com',
-        full_name: 'Ram Patel',
-        role: 'farmer',
-        hashed_password: hash,
-        village: 'Nashik',
-        state: 'Maharashtra',
-        phone: '+91 98765 43210',
-        farm_size: '15 Acres',
-        crops_grown: ['Tomatoes', 'Wheat', 'Grapes'],
-        avatar: 'https://images.unsplash.com/photo-1595273670150-bd0c3c392e46?auto=format&fit=crop&w=150&q=80',
-        created_at: '2026-01-15'
-      },
-      farmer2: {
-        username: 'farmer2',
-        email: 'sita@krishidrive.com',
-        full_name: 'Sita Devi',
-        role: 'farmer',
-        hashed_password: hash,
-        village: 'Ludhiana',
-        state: 'Punjab',
-        phone: '+91 98765 43211',
-        farm_size: '18 Acres',
-        crops_grown: ['Rice', 'Onions', 'Mustard'],
-        avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80',
-        created_at: '2026-02-10'
-      },
-      driver1: {
-        username: 'driver1',
-        email: 'vikram@krishidrive.com',
-        full_name: 'Vikram Singh',
-        role: 'driver',
-        hashed_password: hash,
-        vehicle_id: 'V001',
-        phone: '+91 98765 43212',
-        rating: 4.9,
-        trips_completed: 48,
-        verified: true,
-        license_number: 'MH-12-2021-00892',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-        created_at: '2026-01-20'
-      },
-      driver2: {
-        username: 'driver2',
-        email: 'arjun@krishidrive.com',
-        full_name: 'Arjun Kumar',
-        role: 'driver',
-        hashed_password: hash,
-        vehicle_id: 'V002',
-        phone: '+91 98765 43213',
-        rating: 4.8,
-        trips_completed: 32,
-        verified: true,
-        license_number: 'PB-10-2022-01934',
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
-        created_at: '2026-03-05'
-      },
-      admin: {
-        username: 'admin',
-        email: 'admin@krishidrive.com',
-        full_name: 'Super Administrator',
-        role: 'admin',
-        hashed_password: hash,
-        phone: '+91 98765 43200',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
-        created_at: '2026-01-01'
+function makeUpload(allowedTypes, allowedExts) {
+  return multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        const safe = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, safe + (allowedExts.has(ext) ? ext : '.bin'));
       }
-    });
-  }
-
-  const crops = loadData('crops.json', null);
-  if (!crops || crops.length === 0) {
-    saveData('crops.json', [
-      { id: 'C001', farmer: 'farmer1', name: 'Tomatoes', location: 'Nashik, Maharashtra', acreage: 5, planting_date: '2026-01-10', expected_harvest: '2026-03-25', expected_qty: 8000, unit: 'kg', status: 'ready', soil_type: 'Loamy', estimated_rate_kg: 28 },
-      { id: 'C002', farmer: 'farmer1', name: 'Wheat', location: 'Nashik, Maharashtra', acreage: 10, planting_date: '2025-11-20', expected_harvest: '2026-04-05', expected_qty: 16000, unit: 'kg', status: 'growing', soil_type: 'Alluvial', estimated_rate_kg: 32 },
-      { id: 'C003', farmer: 'farmer2', name: 'Rice', location: 'Ludhiana, Punjab', acreage: 8, planting_date: '2025-11-01', expected_harvest: '2026-03-30', expected_qty: 12500, unit: 'kg', status: 'ready', soil_type: 'Clay', estimated_rate_kg: 40 },
-      { id: 'C004', farmer: 'farmer1', name: 'Grapes', location: 'Nashik, Maharashtra', acreage: 3, planting_date: '2025-09-01', expected_harvest: '2026-02-28', expected_qty: 4500, unit: 'kg', status: 'harvested', soil_type: 'Red Loam', estimated_rate_kg: 75 },
-      { id: 'C005', farmer: 'farmer2', name: 'Onions', location: 'Ludhiana, Punjab', acreage: 6, planting_date: '2025-12-15', expected_harvest: '2026-04-15', expected_qty: 11000, unit: 'kg', status: 'growing', soil_type: 'Sandy Loam', estimated_rate_kg: 22 }
-    ]);
-  }
-
-  const vehicles = loadData('vehicles.json', null);
-  if (!vehicles || vehicles.length === 0) {
-    saveData('vehicles.json', [
-      { id: 'V001', driver: 'driver1', type: 'Truck (10-Ton)', number: 'MH-12-AB-1234', capacity: 10000, fuel_type: 'Diesel', mileage: 35000, insurance_valid: '2027-03-15', status: 'available', last_service: '2026-01-10', verified: true, permit_type: 'All India Goods' },
-      { id: 'V002', driver: 'driver2', type: 'Tempo (3-Ton)', number: 'PB-10-CD-5678', capacity: 3000, fuel_type: 'Diesel', mileage: 22000, insurance_valid: '2027-01-20', status: 'available', last_service: '2026-02-15', verified: true, permit_type: 'State Freight' },
-      { id: 'V003', driver: null, type: 'Heavy Trailer (20-Ton)', number: 'KA-05-EF-9012', capacity: 20000, fuel_type: 'Diesel', mileage: 78000, insurance_valid: '2026-12-31', status: 'available', last_service: '2026-01-05', verified: true, permit_type: 'National Highway' },
-      { id: 'V004', driver: null, type: 'Mini Truck (2.5-Ton)', number: 'GJ-01-GH-3456', capacity: 2500, fuel_type: 'CNG/Petrol', mileage: 15000, insurance_valid: '2027-06-10', status: 'available', last_service: '2026-02-01', verified: true, permit_type: 'Intercity Goods' }
-    ]);
-  }
-
-  const reqs = loadData('transport_requests.json', null);
-  if (!reqs || reqs.length === 0) {
-    saveData('transport_requests.json', [
-      { id: 'TR001', farmer: 'farmer1', crop: 'Tomatoes', quantity: 5000, unit: 'kg', pickup: 'Nashik, Maharashtra', destination: 'Vashi APMC Market, Mumbai', vehicle_type: 'Truck (10-Ton)', pickup_date: '2026-03-26', preferred_time: '06:00 AM', status: 'pending', created_at: '2026-03-20', estimated_cost: 6500 },
-      { id: 'TR002', farmer: 'farmer2', crop: 'Rice', quantity: 8000, unit: 'kg', pickup: 'Ludhiana, Punjab', destination: 'Azadpur Mandi, Delhi', vehicle_type: 'Truck (10-Ton)', pickup_date: '2026-03-28', preferred_time: '05:00 AM', status: 'matched', driver: 'driver1', vehicle: 'V001', created_at: '2026-03-18', estimated_cost: 11200 },
-      { id: 'TR003', farmer: 'farmer1', crop: 'Grapes', quantity: 2000, unit: 'kg', pickup: 'Nashik, Maharashtra', destination: 'Gultekdi Market Yard, Pune', vehicle_type: 'Tempo (3-Ton)', pickup_date: '2026-03-14', preferred_time: '07:00 AM', status: 'delivered', driver: 'driver2', vehicle: 'V002', created_at: '2026-03-10', estimated_cost: 3800 }
-    ]);
-  }
-
-  const trips = loadData('trips.json', null);
-  if (!trips || trips.length === 0) {
-    saveData('trips.json', [
-      { id: 'T001', request: 'TR002', driver: 'driver1', vehicle: 'V001', pickup: 'Ludhiana, Punjab', destination: 'Azadpur Mandi, Delhi', status: 'in_transit', distance_km: 310, fuel_estimate: 58.5, eta_hours: 5.2, cargo: 'Rice (8,000 kg)', earnings: 11200, started_at: '2026-03-28T05:00:00' },
-      { id: 'T002', request: 'TR003', driver: 'driver2', vehicle: 'V002', pickup: 'Nashik, Maharashtra', destination: 'Gultekdi Market Yard, Pune', status: 'completed', distance_km: 175, fuel_estimate: 26.2, eta_hours: 3.4, cargo: 'Grapes (2,000 kg)', earnings: 3800, started_at: '2026-03-14T07:00:00', completed_at: '2026-03-14T10:45:00' }
-    ]);
-  }
+    }),
+    limits: { fileSize: MAX_UPLOAD_SIZE },
+    fileFilter: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      if (!allowedTypes.has(file.mimetype) || !allowedExts.has(ext)) {
+        return cb(Object.assign(new Error(`Unsupported file type: ${file.mimetype}`), { status: 400 }));
+      }
+      // Prevent path traversal in filename
+      const safeName = path.basename(file.originalname || 'file');
+      if (safeName !== file.originalname) {
+        return cb(Object.assign(new Error('Invalid filename'), { status: 400 }));
+      }
+      cb(null, true);
+    }
+  });
 }
-seedData();
 
-// ─── AUTH MIDDLEWARE ───
+const imageUpload = makeUpload(ALLOWED_IMAGE_TYPES, ALLOWED_IMAGE_EXTS);
+
+// ─── VALIDATION HELPER ────────────────────────────────────────────────────────
+function checkValidation(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ detail: errors.array()[0].msg });
+    return true;
+  }
+  return false;
+}
+
+// ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ detail: 'Authentication token missing or invalid' });
   }
   try {
-    const token = header.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const users = loadData('users.json');
-    if (!users[decoded.username]) {
-      return res.status(401).json({ detail: 'User account not found' });
-    }
-    req.user = { ...users[decoded.username], username: decoded.username };
-    delete req.user.hashed_password;
+    const token   = header.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET_ACTUAL, { algorithms: ['HS256'] });
+    const user    = userOps.findByUsername(decoded.username);
+    if (!user) return res.status(401).json({ detail: 'User account not found' });
+    req.user = userOps.safe(user);
     next();
-  } catch (err) {
+  } catch {
     return res.status(401).json({ detail: 'Session expired or invalid token' });
   }
 }
 
-// ─── AUTH ROUTES ───
-app.post('/api/auth/register', (req, res) => {
-  const { username, email, password, full_name, role, village, state, phone } = req.body;
-  if (!username || !email || !password) {
-    return res.status(400).json({ detail: 'Username, email and password are required' });
-  }
-  const users = loadData('users.json');
-  if (users[username]) {
-    return res.status(400).json({ detail: 'Username already taken' });
-  }
-  for (const u of Object.values(users)) {
-    if (u.email && u.email.toLowerCase() === email.toLowerCase()) {
-      return res.status(400).json({ detail: 'Email already registered' });
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ detail: 'Forbidden: insufficient permissions' });
     }
-  }
-  const hashed = bcrypt.hashSync(password, 10);
-  users[username] = {
-    username,
-    email,
-    full_name: full_name || username,
-    role: role || 'farmer',
-    hashed_password: hashed,
-    village: village || 'Nashik',
-    state: state || 'Maharashtra',
-    phone: phone || '',
-    avatar: role === 'driver'
-      ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'
-      : 'https://images.unsplash.com/photo-1595273670150-bd0c3c392e46?auto=format&fit=crop&w=150&q=80',
-    created_at: new Date().toISOString().split('T')[0]
+    next();
   };
-  saveData('users.json', users);
+}
 
-  const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
-  const { hashed_password, ...userSafe } = users[username];
-  res.json({ access_token: token, token_type: 'bearer', user: userSafe });
+// ─── SEED DEMO DATA (only if DB is empty) ─────────────────────────────────────
+function seedData() {
+  const existingUsers = getDb().prepare('SELECT COUNT(*) as n FROM users').get();
+  if (existingUsers.n > 0) return; // Already seeded
+
+  // Only seed in non-production or when explicitly enabled
+  if (process.env.NODE_ENV === 'production' && !process.env.SEED_DEMO_DATA) {
+    console.log('  ℹ️  Production mode: skipping demo seed. Set SEED_DEMO_DATA=1 to seed.');
+    return;
+  }
+
+  console.log('  🌱 Seeding demo data into SQLite...');
+  const hash = bcrypt.hashSync('demo123', 10);
+
+  const seedTxn = getDb().transaction(() => {
+    // Users
+    const insertUser = getDb().prepare(`
+      INSERT OR IGNORE INTO users (username, email, full_name, role, hashed_password, village, state, phone,
+        farm_size, crops_grown, vehicle_id, rating, trips_completed, verified, license_number, avatar, created_at)
+      VALUES (@username, @email, @full_name, @role, @hashed_password, @village, @state, @phone,
+        @farm_size, @crops_grown, @vehicle_id, @rating, @trips_completed, @verified, @license_number, @avatar, @created_at)
+    `);
+    const usersToSeed = [
+      { username: 'farmer1', email: 'ram@krishidrive.com', full_name: 'Ram Patel', role: 'farmer', village: 'Nashik', state: 'Maharashtra', phone: '+91 98765 43210', farm_size: '15 Acres', crops_grown: JSON.stringify(['Tomatoes','Wheat','Grapes']), vehicle_id: null, rating: null, trips_completed: 0, verified: 0, license_number: null, avatar: 'https://images.unsplash.com/photo-1595273670150-bd0c3c392e46?auto=format&fit=crop&w=150&q=80', created_at: '2026-01-15' },
+      { username: 'farmer2', email: 'sita@krishidrive.com', full_name: 'Sita Devi', role: 'farmer', village: 'Ludhiana', state: 'Punjab', phone: '+91 98765 43211', farm_size: '18 Acres', crops_grown: JSON.stringify(['Rice','Onions','Mustard']), vehicle_id: null, rating: null, trips_completed: 0, verified: 0, license_number: null, avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80', created_at: '2026-02-10' },
+      { username: 'driver1', email: 'vikram@krishidrive.com', full_name: 'Vikram Singh', role: 'driver', village: '', state: '', phone: '+91 98765 43212', farm_size: '', crops_grown: '[]', vehicle_id: 'V001', rating: 4.9, trips_completed: 48, verified: 1, license_number: 'MH-12-2021-00892', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80', created_at: '2026-01-20' },
+      { username: 'driver2', email: 'arjun@krishidrive.com', full_name: 'Arjun Kumar', role: 'driver', village: '', state: '', phone: '+91 98765 43213', farm_size: '', crops_grown: '[]', vehicle_id: 'V002', rating: 4.8, trips_completed: 32, verified: 1, license_number: 'PB-10-2022-01934', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80', created_at: '2026-03-05' },
+      { username: 'admin', email: 'admin@krishidrive.com', full_name: 'Super Administrator', role: 'admin', village: '', state: '', phone: '+91 98765 43200', farm_size: '', crops_grown: '[]', vehicle_id: null, rating: null, trips_completed: 0, verified: 1, license_number: null, avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80', created_at: '2026-01-01' }
+    ];
+    for (const u of usersToSeed) insertUser.run({ ...u, hashed_password: hash });
+
+    // Vehicles
+    const insertVehicle = getDb().prepare(`
+      INSERT OR IGNORE INTO vehicles (id, driver, type, number, capacity, fuel_type, mileage, insurance_valid, status, last_service, verified, permit_type)
+      VALUES (@id, @driver, @type, @number, @capacity, @fuel_type, @mileage, @insurance_valid, @status, @last_service, @verified, @permit_type)
+    `);
+    const vehiclesToSeed = [
+      { id: 'V001', driver: 'driver1', type: 'Truck (10-Ton)', number: 'MH-12-AB-1234', capacity: 10000, fuel_type: 'Diesel', mileage: 35000, insurance_valid: '2027-03-15', status: 'available', last_service: '2026-01-10', verified: 1, permit_type: 'All India Goods' },
+      { id: 'V002', driver: 'driver2', type: 'Tempo (3-Ton)', number: 'PB-10-CD-5678', capacity: 3000, fuel_type: 'Diesel', mileage: 22000, insurance_valid: '2027-01-20', status: 'available', last_service: '2026-02-15', verified: 1, permit_type: 'State Freight' },
+      { id: 'V003', driver: null, type: 'Heavy Trailer (20-Ton)', number: 'KA-05-EF-9012', capacity: 20000, fuel_type: 'Diesel', mileage: 78000, insurance_valid: '2026-12-31', status: 'available', last_service: '2026-01-05', verified: 1, permit_type: 'National Highway' },
+      { id: 'V004', driver: null, type: 'Mini Truck (2.5-Ton)', number: 'GJ-01-GH-3456', capacity: 2500, fuel_type: 'CNG/Petrol', mileage: 15000, insurance_valid: '2027-06-10', status: 'available', last_service: '2026-02-01', verified: 1, permit_type: 'Intercity Goods' }
+    ];
+    for (const v of vehiclesToSeed) insertVehicle.run(v);
+
+    // Crops
+    const insertCrop = getDb().prepare(`
+      INSERT OR IGNORE INTO crops (id, farmer, name, location, acreage, planting_date, expected_harvest, expected_qty, unit, status, soil_type, estimated_rate_kg, created_at)
+      VALUES (@id, @farmer, @name, @location, @acreage, @planting_date, @expected_harvest, @expected_qty, @unit, @status, @soil_type, @estimated_rate_kg, @created_at)
+    `);
+    const cropsToSeed = [
+      { id: 'C001', farmer: 'farmer1', name: 'Tomatoes', location: 'Nashik, Maharashtra', acreage: 5, planting_date: '2026-01-10', expected_harvest: '2026-03-25', expected_qty: 8000, unit: 'kg', status: 'ready', soil_type: 'Loamy', estimated_rate_kg: 28, created_at: new Date().toISOString() },
+      { id: 'C002', farmer: 'farmer1', name: 'Wheat', location: 'Nashik, Maharashtra', acreage: 10, planting_date: '2025-11-20', expected_harvest: '2026-04-05', expected_qty: 16000, unit: 'kg', status: 'growing', soil_type: 'Alluvial', estimated_rate_kg: 32, created_at: new Date().toISOString() },
+      { id: 'C003', farmer: 'farmer2', name: 'Rice', location: 'Ludhiana, Punjab', acreage: 8, planting_date: '2025-11-01', expected_harvest: '2026-03-30', expected_qty: 12500, unit: 'kg', status: 'ready', soil_type: 'Clay', estimated_rate_kg: 40, created_at: new Date().toISOString() },
+      { id: 'C004', farmer: 'farmer1', name: 'Grapes', location: 'Nashik, Maharashtra', acreage: 3, planting_date: '2025-09-01', expected_harvest: '2026-02-28', expected_qty: 4500, unit: 'kg', status: 'harvested', soil_type: 'Red Loam', estimated_rate_kg: 75, created_at: new Date().toISOString() },
+      { id: 'C005', farmer: 'farmer2', name: 'Onions', location: 'Ludhiana, Punjab', acreage: 6, planting_date: '2025-12-15', expected_harvest: '2026-04-15', expected_qty: 11000, unit: 'kg', status: 'growing', soil_type: 'Sandy Loam', estimated_rate_kg: 22, created_at: new Date().toISOString() }
+    ];
+    for (const c of cropsToSeed) insertCrop.run(c);
+
+    // Transport Requests
+    const insertReq = getDb().prepare(`
+      INSERT OR IGNORE INTO transport_requests (id, farmer, farmer_name, farmer_phone, crop, quantity, unit, pickup, destination, vehicle_type, pickup_date, preferred_time, estimated_cost, status, driver, vehicle, passed_by, created_at)
+      VALUES (@id, @farmer, @farmer_name, @farmer_phone, @crop, @quantity, @unit, @pickup, @destination, @vehicle_type, @pickup_date, @preferred_time, @estimated_cost, @status, @driver, @vehicle, @passed_by, @created_at)
+    `);
+    const reqsToSeed = [
+      { id: 'TR001', farmer: 'farmer1', farmer_name: 'Ram Patel', farmer_phone: '+91 98765 43210', crop: 'Tomatoes', quantity: 5000, unit: 'kg', pickup: 'Nashik, Maharashtra', destination: 'Vashi APMC Market, Mumbai', vehicle_type: 'Truck (10-Ton)', pickup_date: '2026-03-26', preferred_time: '06:00 AM', estimated_cost: 6500, status: 'pending', driver: null, vehicle: null, passed_by: '[]', created_at: '2026-03-20' },
+      { id: 'TR002', farmer: 'farmer2', farmer_name: 'Sita Devi', farmer_phone: '+91 98765 43211', crop: 'Rice', quantity: 8000, unit: 'kg', pickup: 'Ludhiana, Punjab', destination: 'Azadpur Mandi, Delhi', vehicle_type: 'Truck (10-Ton)', pickup_date: '2026-03-28', preferred_time: '05:00 AM', estimated_cost: 11200, status: 'matched', driver: 'driver1', vehicle: 'V001', passed_by: '[]', created_at: '2026-03-18' },
+      { id: 'TR003', farmer: 'farmer1', farmer_name: 'Ram Patel', farmer_phone: '+91 98765 43210', crop: 'Grapes', quantity: 2000, unit: 'kg', pickup: 'Nashik, Maharashtra', destination: 'Gultekdi Market Yard, Pune', vehicle_type: 'Tempo (3-Ton)', pickup_date: '2026-03-14', preferred_time: '07:00 AM', estimated_cost: 3800, status: 'delivered', driver: 'driver2', vehicle: 'V002', passed_by: '[]', created_at: '2026-03-10' }
+    ];
+    for (const r of reqsToSeed) insertReq.run(r);
+
+    // Trips
+    const insertTrip = getDb().prepare(`
+      INSERT OR IGNORE INTO trips (id, request, driver, vehicle, pickup, destination, cargo, status, distance_km, fuel_estimate, eta_hours, earnings, started_at, completed_at)
+      VALUES (@id, @request, @driver, @vehicle, @pickup, @destination, @cargo, @status, @distance_km, @fuel_estimate, @eta_hours, @earnings, @started_at, @completed_at)
+    `);
+    const tripsToSeed = [
+      { id: 'T001', request: 'TR002', driver: 'driver1', vehicle: 'V001', pickup: 'Ludhiana, Punjab', destination: 'Azadpur Mandi, Delhi', cargo: 'Rice (8,000 kg)', status: 'in_transit', distance_km: 310, fuel_estimate: 58.5, eta_hours: 5.2, earnings: 11200, started_at: '2026-03-28T05:00:00', completed_at: null },
+      { id: 'T002', request: 'TR003', driver: 'driver2', vehicle: 'V002', pickup: 'Nashik, Maharashtra', destination: 'Gultekdi Market Yard, Pune', cargo: 'Grapes (2,000 kg)', status: 'completed', distance_km: 175, fuel_estimate: 26.2, eta_hours: 3.4, earnings: 3800, started_at: '2026-03-14T07:00:00', completed_at: '2026-03-14T10:45:00' }
+    ];
+    for (const t of tripsToSeed) insertTrip.run(t);
+  });
+  seedTxn();
+  console.log('  ✅ Demo data seeded');
+}
+
+// Initialize DB, import legacy JSON once, then seed demo accounts only if empty.
+try {
+  getDb();
+  const imported = migrateFromJson({ archive: false, quiet: true });
+  if (!imported.skipped) {
+    console.log(`  Database: imported ${imported.users} users from legacy JSON`);
+  }
+  seedData();
+} catch (err) {
+  console.error('FATAL: Database initialization failed:', err);
+  process.exit(1);
+}
+
+// ─── AGRONOMIC SCORING ENGINE (formerly "AI Crop Recommendation") ─────────────
+const CROPS_AGRONOMY_DB = [
+  { name: 'Rice (Paddy)',    season: 'Kharif',        optimal: { n:120, p:60,  k:40,  ph:6.0, temp:28, humidity:80, rainfall:1500 }, tolerances: { n:40, p:25, k:25, ph:1.5, temp:8, humidity:20, rainfall:600 }, soils: ['Clay','Clay Loam','Alluvial'], yield_acre_kg: 2400, market_rate_kg: 42, rationale: 'High water retention capacity and strong nitrogen affinity favour high-yielding paddy varieties.' },
+  { name: 'Wheat',           season: 'Rabi',           optimal: { n:100, p:50,  k:40,  ph:6.8, temp:18, humidity:60, rainfall:650  }, tolerances: { n:35, p:20, k:20, ph:1.2, temp:7, humidity:25, rainfall:300 }, soils: ['Loamy','Clay Loam','Alluvial'], yield_acre_kg: 2100, market_rate_kg: 32, rationale: 'Moderate temperature and balanced nitrogen with well-draining loamy soil suits premium wheat grain development.' },
+  { name: 'Cotton',          season: 'Kharif',        optimal: { n:120, p:60,  k:60,  ph:7.2, temp:28, humidity:65, rainfall:850  }, tolerances: { n:45, p:25, k:30, ph:1.4, temp:8, humidity:20, rainfall:350 }, soils: ['Black','Alluvial','Deep Loam'], yield_acre_kg: 950, market_rate_kg: 72, rationale: 'Black cotton soil with high moisture retention and sunny conditions optimise boll formation.' },
+  { name: 'Tomato (Hybrid)', season: 'Year-Round',    optimal: { n:140, p:80,  k:100, ph:6.5, temp:24, humidity:65, rainfall:600  }, tolerances: { n:50, p:30, k:40, ph:1.0, temp:6, humidity:20, rainfall:300 }, soils: ['Loamy','Sandy Loam','Red Loam'], yield_acre_kg: 9500, market_rate_kg: 26, rationale: 'High potassium and warm temperatures support continuous flowering and firm fruit set.' },
+  { name: 'Maize (Corn)',    season: 'Kharif / Rabi', optimal: { n:110, p:50,  k:40,  ph:6.5, temp:26, humidity:65, rainfall:750  }, tolerances: { n:40, p:20, k:20, ph:1.3, temp:8, humidity:25, rainfall:350 }, soils: ['Loamy','Alluvial','Red'], yield_acre_kg: 2800, market_rate_kg: 24, rationale: 'Well-aerated loam soil and balanced NPK deliver heavy cobs with high starch density.' },
+  { name: 'Sugarcane',       season: 'Annual',        optimal: { n:250, p:100, k:120, ph:7.0, temp:30, humidity:75, rainfall:1800 }, tolerances: { n:70, p:40, k:50, ph:1.5, temp:9, humidity:20, rainfall:700 }, soils: ['Deep Alluvial','Black','Clay Loam'], yield_acre_kg: 38000, market_rate_kg: 4.2, rationale: 'Abundant water and rich organic nitrogen sustain extensive growth and sucrose concentration.' },
+  { name: 'Onions',          season: 'Rabi / Late Kharif', optimal: { n:90, p:60, k:80, ph:6.8, temp:22, humidity:60, rainfall:500 }, tolerances: { n:30, p:25, k:30, ph:1.0, temp:7, humidity:20, rainfall:250 }, soils: ['Sandy Loam','Loamy','Alluvial'], yield_acre_kg: 10500, market_rate_kg: 22, rationale: 'Friable sandy loam with good drainage and phosphorus prevents bulb rot and fosters uniform sizing.' },
+  { name: 'Chickpea (Gram)', season: 'Rabi',           optimal: { n:30,  p:50,  k:30,  ph:7.2, temp:20, humidity:55, rainfall:450  }, tolerances: { n:20, p:25, k:20, ph:1.2, temp:6, humidity:20, rainfall:200 }, soils: ['Black','Loamy','Clay Loam'], yield_acre_kg: 850, market_rate_kg: 68, rationale: 'Nitrogen-fixing legume thrives in low-nitrogen soil, conserving soil health.' }
+];
+
+// ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
+app.post('/api/auth/register', authLimiter, [
+  body('username').trim().isLength({ min: 3, max: 30 }).matches(/^[a-zA-Z0-9_]+$/).withMessage('Username must be 3-30 alphanumeric characters'),
+  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('role').optional().isIn(['farmer','driver']).withMessage('Role must be farmer or driver')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const { username, email, password, full_name, role, village, state, phone } = req.body;
+
+  if (userOps.findByUsername(username)) return res.status(400).json({ detail: 'Username already taken' });
+  if (userOps.findByEmail(email)) return res.status(400).json({ detail: 'Email already registered' });
+
+  const safeRole = ['farmer','driver'].includes(role) ? role : 'farmer';
+  let user;
+  try {
+    user = userOps.create({
+      username, email,
+      full_name: full_name || username,
+      role: safeRole,
+      hashed_password: bcrypt.hashSync(password, 10),
+      village: village || '',
+      state: state || '',
+      phone: phone || '',
+      farm_size: '',
+      crops_grown: [],
+      vehicle_id: null,
+      rating: null,
+      trips_completed: 0,
+      verified: 0,
+      license_number: null,
+      avatar: safeRole === 'driver'
+        ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80'
+        : 'https://images.unsplash.com/photo-1595273670150-bd0c3c392e46?auto=format&fit=crop&w=150&q=80',
+      created_at: new Date().toISOString().split('T')[0]
+    });
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE')) {
+      return res.status(409).json({ detail: 'Username or email was just registered by another request' });
+    }
+    throw err;
+  }
+
+  const token = jwt.sign({ username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+  res.json({ access_token: token, token_type: 'bearer', user: userOps.safe(user) });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, [
+  body('username').trim().notEmpty().withMessage('Username required'),
+  body('password').notEmpty().withMessage('Password required')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
   const { username, password } = req.body;
-  const users = loadData('users.json');
-  if (!users[username]) {
+  const user = userOps.findByUsername(username);
+  if (!user || !bcrypt.compareSync(password, user.hashed_password)) {
     return res.status(401).json({ detail: 'Invalid username or password' });
   }
-  if (!bcrypt.compareSync(password, users[username].hashed_password)) {
-    return res.status(401).json({ detail: 'Invalid username or password' });
-  }
-  const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
-  const { hashed_password, ...userSafe } = users[username];
-  res.json({ access_token: token, token_type: 'bearer', user: userSafe });
+  const token = jwt.sign({ username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+  res.json({ access_token: token, token_type: 'bearer', user: userOps.safe(user) });
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => res.json(req.user));
 
-app.put('/api/auth/profile', authMiddleware, (req, res) => {
-  const users = loadData('users.json');
-  if (!users[req.user.username]) return res.status(404).json({ detail: 'User not found' });
+app.put('/api/auth/profile', authMiddleware, [
+  body('full_name').optional().trim().isLength({ min: 1, max: 100 }),
+  body('phone').optional().trim().isLength({ max: 20 }),
+  body('village').optional().trim().isLength({ max: 100 }),
+  body('state').optional().trim().isLength({ max: 100 }),
+  body('farm_size').optional().trim().isLength({ max: 50 })
+], (req, res) => {
+  if (checkValidation(req, res)) return;
   const { full_name, phone, village, state, farm_size } = req.body;
-  users[req.user.username] = {
-    ...users[req.user.username],
-    ...(full_name ? { full_name } : {}),
-    ...(phone ? { phone } : {}),
-    ...(village ? { village } : {}),
-    ...(state ? { state } : {}),
-    ...(farm_size ? { farm_size } : {})
-  };
-  saveData('users.json', users);
-  const { hashed_password, ...userSafe } = users[req.user.username];
-  res.json(userSafe);
+  const updated = userOps.update(req.user.username, { full_name, phone, village, state, farm_size });
+  res.json(userOps.safe(updated));
 });
 
-// ─── CROP ROUTES ───
+// ─── CROP ROUTES ──────────────────────────────────────────────────────────────
 app.get('/api/crops', authMiddleware, (req, res) => {
-  const crops = loadData('crops.json', []);
-  if (req.user.role === 'farmer') {
-    return res.json(crops.filter(c => c.farmer === req.user.username));
-  }
-  res.json(crops);
+  if (req.user.role === 'farmer') return res.json(cropOps.listByFarmer(req.user.username));
+  res.json(cropOps.listAll());
 });
 
-app.post('/api/crops', authMiddleware, (req, res) => {
-  if (req.user.role !== 'farmer' && req.user.role !== 'admin') {
-    return res.status(403).json({ detail: 'Only farmers can add crop records' });
+app.get('/api/crops/:id', authMiddleware, (req, res) => {
+  const crop = cropOps.findById(req.params.id);
+  if (!crop) return res.status(404).json({ detail: 'Crop not found' });
+  if (req.user.role === 'farmer' && crop.farmer !== req.user.username) {
+    return res.status(403).json({ detail: 'Forbidden: You do not own this crop' });
   }
-  const crops = loadData('crops.json', []);
-  const newCrop = {
-    id: getNextId(crops, 'C'),
+  res.json(crop);
+});
+
+app.post('/api/crops', authMiddleware, requireRole('farmer','admin'), [
+  body('name').trim().notEmpty().isLength({ max: 100 }).withMessage('Crop name required'),
+  body('acreage').isFloat({ min: 0.01, max: 10000 }).withMessage('Valid acreage required'),
+  body('expected_qty').isFloat({ min: 1 }).withMessage('Valid expected quantity required')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const crop = cropOps.create({
     farmer: req.user.username,
-    name: req.body.name || 'Crop',
+    name: req.body.name,
     location: req.body.location || req.user.village || 'Farm',
     acreage: parseFloat(req.body.acreage) || 1,
-    planting_date: req.body.planting_date || new Date().toISOString().split('T')[0],
+    planting_date: req.body.planting_date || '',
     expected_harvest: req.body.expected_harvest || '',
     expected_qty: parseFloat(req.body.expected_qty) || 1000,
     unit: req.body.unit || 'kg',
     status: req.body.status || 'growing',
     soil_type: req.body.soil_type || 'Loamy',
-    estimated_rate_kg: parseFloat(req.body.estimated_rate_kg) || 25,
-    created_at: new Date().toISOString()
-  };
-  crops.push(newCrop);
-  saveData('crops.json', crops);
-  res.json(newCrop);
+    estimated_rate_kg: parseFloat(req.body.estimated_rate_kg) || 25
+  });
+  res.json(crop);
 });
 
 app.put('/api/crops/:id', authMiddleware, (req, res) => {
-  const crops = loadData('crops.json', []);
-  const idx = crops.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ detail: 'Crop not found' });
-  if (req.user.role === 'farmer' && crops[idx].farmer !== req.user.username) {
+  const crop = cropOps.findById(req.params.id);
+  if (!crop) return res.status(404).json({ detail: 'Crop not found' });
+  if (req.user.role === 'farmer' && crop.farmer !== req.user.username)
     return res.status(403).json({ detail: 'Forbidden: You do not own this crop' });
-  }
-  crops[idx] = { ...crops[idx], ...req.body };
-  saveData('crops.json', crops);
-  res.json(crops[idx]);
+  // Whitelist updatable fields
+  const { name, location, acreage, planting_date, expected_harvest, expected_qty, unit, status, soil_type, estimated_rate_kg } = req.body;
+  const updated = cropOps.update(req.params.id, { name, location, acreage, planting_date, expected_harvest, expected_qty, unit, status, soil_type, estimated_rate_kg });
+  res.json(updated);
 });
 
 app.delete('/api/crops/:id', authMiddleware, (req, res) => {
-  const crops = loadData('crops.json', []);
-  const idx = crops.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ detail: 'Crop not found' });
-  if (req.user.role === 'farmer' && crops[idx].farmer !== req.user.username) {
+  const crop = cropOps.findById(req.params.id);
+  if (!crop) return res.status(404).json({ detail: 'Crop not found' });
+  if (req.user.role === 'farmer' && crop.farmer !== req.user.username)
     return res.status(403).json({ detail: 'Forbidden: You do not own this crop' });
-  }
-  const removed = crops.splice(idx, 1)[0];
-  saveData('crops.json', crops);
+  const removed = cropOps.delete(req.params.id);
   res.json({ message: 'Crop deleted successfully', crop: removed });
 });
 
-// ─── TRANSPORT REQUEST ROUTES ───
+// ─── TRANSPORT REQUEST ROUTES ─────────────────────────────────────────────────
 app.get('/api/transport/requests', authMiddleware, (req, res) => {
-  const reqs = loadData('transport_requests.json', []);
-  if (req.user.role === 'farmer') {
-    return res.json(reqs.filter(r => r.farmer === req.user.username));
-  }
-  if (req.user.role === 'driver') {
-    return res.json(reqs.filter(r => r.status === 'pending' || r.driver === req.user.username));
-  }
-  res.json(reqs);
+  if (req.user.role === 'farmer') return res.json(transportOps.listByFarmer(req.user.username));
+  if (req.user.role === 'driver') return res.json(transportOps.listForDriver(req.user.username));
+  res.json(transportOps.listAll());
 });
 
-app.post('/api/transport/request', authMiddleware, (req, res) => {
-  if (req.user.role !== 'farmer' && req.user.role !== 'admin') {
-    return res.status(403).json({ detail: 'Forbidden' });
-  }
-  const reqs = loadData('transport_requests.json', []);
+app.post('/api/transport/request', authMiddleware, requireRole('farmer','admin'), [
+  body('crop').trim().notEmpty().isLength({ max: 100 }).withMessage('Crop name required'),
+  body('quantity').isFloat({ min: 1 }).withMessage('Quantity must be positive'),
+  body('pickup').trim().notEmpty().withMessage('Pickup location required'),
+  body('destination').trim().notEmpty().withMessage('Destination required')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
   const qty = parseFloat(req.body.quantity) || 1000;
   const estimatedCost = Math.round(qty * 0.8 + 1500);
-
-  const tr = {
-    id: getNextId(reqs, 'TR'),
+  const tr = transportOps.create({
     farmer: req.user.username,
     farmer_name: req.user.full_name || req.user.username,
     farmer_phone: req.user.phone || '',
-    crop: req.body.crop || 'Produce',
+    crop: req.body.crop,
     quantity: qty,
     unit: req.body.unit || 'kg',
-    pickup: req.body.pickup || req.user.village || 'Farm',
-    destination: req.body.destination || 'Market',
+    pickup: req.body.pickup,
+    destination: req.body.destination,
     vehicle_type: req.body.vehicle_type || 'Truck (10-Ton)',
     pickup_date: req.body.pickup_date || new Date().toISOString().split('T')[0],
     preferred_time: req.body.preferred_time || '07:00 AM',
-    estimated_cost: estimatedCost,
-    status: 'pending',
-    created_at: new Date().toISOString().split('T')[0]
-  };
-  reqs.unshift(tr);
-  saveData('transport_requests.json', reqs);
+    estimated_cost: estimatedCost
+  });
   res.json(tr);
 });
 
 app.delete('/api/transport/requests/:id', authMiddleware, (req, res) => {
-  const reqs = loadData('transport_requests.json', []);
-  const idx = reqs.findIndex(r => r.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ detail: 'Transport request not found' });
-  if (req.user.role === 'farmer' && reqs[idx].farmer !== req.user.username) {
+  const request = transportOps.findById(req.params.id);
+  if (!request) return res.status(404).json({ detail: 'Transport request not found' });
+  if (req.user.role === 'farmer' && request.farmer !== req.user.username)
     return res.status(403).json({ detail: 'Unauthorized' });
-  }
-  const removed = reqs.splice(idx, 1)[0];
-  saveData('transport_requests.json', reqs);
+  const removed = transportOps.delete(req.params.id);
   res.json({ message: 'Request cancelled successfully', request: removed });
 });
 
-// BUG-01 FIXED: Distinct Driver acceptance vs Farmer booking
-app.post('/api/transport/accept', authMiddleware, (req, res) => {
+app.post('/api/transport/accept', authMiddleware, async (req, res) => {
   const { request_id, vehicle_id, driver_username } = req.body;
-  const reqs = loadData('transport_requests.json', []);
-  const vehicles = loadData('vehicles.json', []);
-  const users = loadData('users.json');
+  if (!request_id) return res.status(400).json({ detail: 'request_id is required' });
 
-  const rIdx = reqs.findIndex(r => r.id === request_id);
-  if (rIdx === -1) return res.status(404).json({ detail: 'Transport request not found' });
+  const transportRequest = transportOps.findById(request_id);
+  if (!transportRequest) return res.status(404).json({ detail: 'Transport request not found' });
+
+  if (req.user.role === 'farmer' && transportRequest.farmer !== req.user.username)
+    return res.status(403).json({ detail: 'Forbidden: You do not own this transport request' });
 
   let assignedDriver = null;
-  let assignedVehicle = vehicle_id;
+  let assignedVehicle = vehicle_id || null;
 
   if (req.user.role === 'driver') {
     assignedDriver = req.user.username;
     if (!assignedVehicle) {
-      const v = vehicles.find(vec => vec.driver === req.user.username);
-      assignedVehicle = v ? v.id : 'V001';
+      const v = vehicleOps.findByDriver(req.user.username);
+      assignedVehicle = v ? v.id : null;
     }
-  } else if (req.user.role === 'farmer' || req.user.role === 'admin') {
-    if (driver_username && users[driver_username]) {
+  } else {
+    if (driver_username) {
+      const target = userOps.findByUsername(driver_username);
+      if (!target || target.role !== 'driver')
+        return res.status(400).json({ detail: 'Selected user is not a registered driver' });
       assignedDriver = driver_username;
-    } else {
-      const v = vehicles.find(vec => vec.id === vehicle_id);
-      assignedDriver = v && v.driver ? v.driver : 'driver1';
+    }
+    if (!assignedVehicle && assignedDriver) {
+      const v = vehicleOps.findByDriver(assignedDriver);
+      if (v) assignedVehicle = v.id;
+    } else if (!assignedDriver && assignedVehicle) {
+      const v = vehicleOps.findById(assignedVehicle);
+      if (v && v.driver) assignedDriver = v.driver;
     }
   }
 
-  reqs[rIdx].status = 'matched';
-  reqs[rIdx].driver = assignedDriver;
-  reqs[rIdx].vehicle = assignedVehicle;
-  saveData('transport_requests.json', reqs);
+  if (!assignedDriver) return res.status(400).json({ detail: 'Unable to resolve a driver for this request' });
+  if (!assignedVehicle) return res.status(400).json({ detail: 'Unable to resolve a vehicle for this request' });
 
-  // Update vehicle status
-  const vIdx = vehicles.findIndex(v => v.id === assignedVehicle);
-  if (vIdx !== -1) {
-    vehicles[vIdx].status = 'assigned';
-    saveData('vehicles.json', vehicles);
+  // Resolve real road distance. If routing is unavailable, leave the distance
+  // unknown instead of inventing one; the request already carries an explicit
+  // quantity-based quote.
+  let distanceKm = null;
+  let routeInfo = null;
+  try {
+    routeInfo = await routePlaces(transportRequest.pickup, transportRequest.destination);
+    if (routeInfo.available && routeInfo.routes[0]) {
+      distanceKm = routeInfo.routes[0].distance_km;
+    }
+  } catch {
+    distanceKm = null;
   }
 
-  // Create new active Trip
-  const trips = loadData('trips.json', []);
-  const distance = Math.round(150 + Math.random() * 180);
-  const fuelEst = Math.round((distance * 0.18) * 10) / 10;
-  const earnings = reqs[rIdx].estimated_cost || Math.round(distance * 28);
+  const earnings = transportRequest.estimated_cost ?? null;
 
-  const trip = {
-    id: getNextId(trips, 'T'),
-    request: request_id,
-    driver: assignedDriver,
-    vehicle: assignedVehicle,
-    pickup: reqs[rIdx].pickup,
-    destination: reqs[rIdx].destination,
-    cargo: `${reqs[rIdx].crop} (${reqs[rIdx].quantity} ${reqs[rIdx].unit})`,
-    status: 'scheduled',
-    distance_km: distance,
-    fuel_estimate: fuelEst,
-    eta_hours: Math.round((distance / 45) * 10) / 10,
-    earnings: earnings,
-    started_at: new Date().toISOString()
-  };
-  trips.unshift(trip);
-  saveData('trips.json', trips);
-
-  res.json({ request: reqs[rIdx], trip });
+  try {
+    const result = transportOps.accept(request_id, assignedDriver, assignedVehicle, distanceKm, earnings);
+    const trip = tripOps.findById(result.tripId);
+    res.json({
+      request: result.request,
+      trip,
+      route: routeInfo ? {
+        source: routeInfo.source,
+        is_estimate: Boolean(routeInfo.is_estimate),
+        distance_km: distanceKm
+      } : null
+    });
+  } catch (err) {
+    if (err.status === 409) return res.status(409).json({ detail: err.message });
+    if (err.status === 404) return res.status(404).json({ detail: err.message });
+    throw err;
+  }
 });
 
-app.post('/api/transport/reject', authMiddleware, (req, res) => {
+app.post('/api/transport/reject', authMiddleware, requireRole('driver'), (req, res) => {
   const { request_id } = req.body;
-  res.json({ message: 'Request passed', request_id });
+  if (!request_id) return res.status(400).json({ detail: 'request_id is required' });
+  try {
+    transportOps.pass(request_id, req.user.username);
+    res.json({ message: 'Request passed', request_id });
+  } catch (err) {
+    res.status(err.status || 500).json({ detail: err.message });
+  }
 });
 
-// ─── VEHICLE & DRIVER ROUTES ───
+// ─── VEHICLE & DRIVER ROUTES ─────────────────────────────────────────────────
 app.get('/api/vehicles', authMiddleware, (req, res) => {
-  const vehicles = loadData('vehicles.json', []);
-  if (req.user.role === 'driver') {
-    return res.json(vehicles.filter(v => v.driver === req.user.username));
-  }
-  res.json(vehicles);
+  if (req.user.role === 'driver') return res.json(vehicleOps.listByDriver(req.user.username));
+  res.json(vehicleOps.listAll());
 });
 
 app.get('/api/drivers', authMiddleware, (req, res) => {
-  const users = loadData('users.json');
-  const drivers = Object.entries(users)
-    .filter(([, u]) => u.role === 'driver')
-    .map(([k, u]) => {
-      const { hashed_password, ...d } = u;
-      return d;
-    });
+  const drivers = userOps.listByRole('driver').map(userOps.safe);
+  // Strip phone numbers from non-admin view
+  if (req.user.role !== 'admin') {
+    return res.json(drivers.map(({ phone, ...d }) => d));
+  }
   res.json(drivers);
 });
 
-app.post('/api/admin/drivers/:username/verify', authMiddleware, (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ detail: 'Admin access required' });
-  const users = loadData('users.json');
-  const target = users[req.params.username];
+app.post('/api/admin/drivers/:username/verify', authMiddleware, requireRole('admin'), (req, res) => {
+  const target = userOps.findByUsername(req.params.username);
   if (!target || target.role !== 'driver') return res.status(404).json({ detail: 'Driver not found' });
-  target.verified = req.body.verified !== undefined ? req.body.verified : true;
-  saveData('users.json', users);
-  const { hashed_password, ...safe } = target;
-  res.json({ message: `Driver verification set to ${target.verified}`, driver: safe });
+  const verifiedVal = req.body.verified !== undefined ? Boolean(req.body.verified) : true;
+  const updated = userOps.update(req.params.username, { verified: verifiedVal });
+  res.json({ message: `Driver verification set to ${verifiedVal}`, driver: userOps.safe(updated) });
 });
 
-// ─── TRIP ROUTES ───
+// ─── TRIP ROUTES ──────────────────────────────────────────────────────────────
 app.get('/api/trips', authMiddleware, (req, res) => {
-  const trips = loadData('trips.json', []);
-  if (req.user.role === 'driver') {
-    return res.json(trips.filter(t => t.driver === req.user.username));
-  }
+  if (req.user.role === 'driver') return res.json(tripOps.listByDriver(req.user.username));
   if (req.user.role === 'farmer') {
-    const reqs = loadData('transport_requests.json', []);
-    const myReqIds = reqs.filter(r => r.farmer === req.user.username).map(r => r.id);
-    return res.json(trips.filter(t => myReqIds.includes(t.request)));
+    const myReqs = transportOps.listByFarmer(req.user.username).map(r => r.id);
+    return res.json(tripOps.listByRequestIds(myReqs));
   }
-  res.json(trips);
+  res.json(tripOps.listAll());
 });
 
 app.put('/api/trips/:id', authMiddleware, (req, res) => {
-  const trips = loadData('trips.json', []);
-  const idx = trips.findIndex(t => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ detail: 'Trip not found' });
-
-  // Authorization check
-  if (req.user.role === 'driver' && trips[idx].driver !== req.user.username) {
+  const trip = tripOps.findById(req.params.id);
+  if (!trip) return res.status(404).json({ detail: 'Trip not found' });
+  if (req.user.role === 'farmer') {
+    return res.status(403).json({ detail: 'Farmers can track trips but cannot change their status' });
+  }
+  if (req.user.role === 'driver' && trip.driver !== req.user.username)
     return res.status(403).json({ detail: 'Unauthorized: Not your assigned trip' });
-  }
-
-  trips[idx] = { ...trips[idx], ...req.body };
-  if (req.body.status === 'completed') {
-    trips[idx].completed_at = new Date().toISOString();
-    // Free up vehicle
-    const vehicles = loadData('vehicles.json', []);
-    const vIdx = vehicles.findIndex(v => v.id === trips[idx].vehicle);
-    if (vIdx !== -1) {
-      vehicles[vIdx].status = 'available';
-      saveData('vehicles.json', vehicles);
-    }
-  }
-  saveData('trips.json', trips);
-  res.json(trips[idx]);
+  // Whitelist updatable fields only
+  const { status, started_at, completed_at, eta_hours } = req.body;
+  const updated = tripOps.update(req.params.id, { status, started_at, completed_at, eta_hours });
+  res.json(updated);
 });
 
-// ─── REAL AGRICULTURAL GEOGRAPHY / CITIES DATABASE ───
-const CITY_COORDS = {
-  nashik: { lat: 19.9975, lng: 73.7898, state: 'Maharashtra', region: 'Western' },
-  mumbai: { lat: 18.9220, lng: 72.8347, state: 'Maharashtra', region: 'Western' },
-  pune: { lat: 18.5204, lng: 73.8567, state: 'Maharashtra', region: 'Western' },
-  nagpur: { lat: 21.1458, lng: 79.0882, state: 'Maharashtra', region: 'Central' },
-  aurangabad: { lat: 19.8762, lng: 75.3433, state: 'Maharashtra', region: 'Western' },
-  ludhiana: { lat: 30.9010, lng: 75.8573, state: 'Punjab', region: 'Northern' },
-  delhi: { lat: 28.6139, lng: 77.2090, state: 'Delhi NCR', region: 'Northern' },
-  chandigarh: { lat: 30.7333, lng: 76.7794, state: 'Punjab/Haryana', region: 'Northern' },
-  jaipur: { lat: 26.9124, lng: 75.7873, state: 'Rajasthan', region: 'Northern' },
-  ahmedabad: { lat: 23.0225, lng: 72.5714, state: 'Gujarat', region: 'Western' },
-  surat: { lat: 21.1702, lng: 72.8311, state: 'Gujarat', region: 'Western' },
-  bhopal: { lat: 23.2599, lng: 77.4126, state: 'Madhya Pradesh', region: 'Central' },
-  indore: { lat: 22.7196, lng: 75.8577, state: 'Madhya Pradesh', region: 'Central' },
-  hyderabad: { lat: 17.3850, lng: 78.4867, state: 'Telangana', region: 'Southern' },
-  bangalore: { lat: 12.9716, lng: 77.5946, state: 'Karnataka', region: 'Southern' }
-};
+// ─── AGRONOMIC SCORING ENGINE (formerly AI Crop Recommendation) ───────────────
+app.post('/api/ai/crop-recommendation', authMiddleware, aiLimiter, (req, res) => {
+  const { soil_type = 'Loamy', nitrogen = 110, phosphorus = 55, potassium = 45,
+          temperature = 24, humidity = 65, rainfall = 800, ph = 6.6 } = req.body;
 
-function haversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function resolveCoords(placeStr) {
-  if (!placeStr) return null;
-  const norm = placeStr.toLowerCase();
-  for (const [key, val] of Object.entries(CITY_COORDS)) {
-    if (norm.includes(key)) return { name: key.charAt(0).toUpperCase() + key.slice(1), ...val };
-  }
-  return null;
-}
-
-// ─── PHASE 3 ADVANCED REAL AI ENGINES ───
-
-// 1. AI Crop Recommendation Engine (NPK, pH, Climate Soil Matrix)
-const CROPS_AGRONOMY_DB = [
-  {
-    name: 'Rice (Paddy)',
-    season: 'Kharif',
-    optimal: { n: 120, p: 60, k: 40, ph: 6.0, temp: 28, humidity: 80, rainfall: 1500 },
-    tolerances: { n: 40, p: 25, k: 25, ph: 1.5, temp: 8, humidity: 20, rainfall: 600 },
-    soils: ['Clay', 'Clay Loam', 'Alluvial'],
-    yield_acre_kg: 2400,
-    market_rate_kg: 42,
-    rationale: 'High water retention capacity and strong nitrogen affinity make your soil and rainfall conditions ideal for high-yielding paddy varieties.'
-  },
-  {
-    name: 'Wheat',
-    season: 'Rabi',
-    optimal: { n: 100, p: 50, k: 40, ph: 6.8, temp: 18, humidity: 60, rainfall: 650 },
-    tolerances: { n: 35, p: 20, k: 20, ph: 1.2, temp: 7, humidity: 25, rainfall: 300 },
-    soils: ['Loamy', 'Clay Loam', 'Alluvial'],
-    yield_acre_kg: 2100,
-    market_rate_kg: 32,
-    rationale: 'Moderate temperature and balanced nitrogen with well-draining loamy soil create the ideal agronomic profile for premium wheat grain development.'
-  },
-  {
-    name: 'Cotton',
-    season: 'Kharif',
-    optimal: { n: 120, p: 60, k: 60, ph: 7.2, temp: 28, humidity: 65, rainfall: 850 },
-    tolerances: { n: 45, p: 25, k: 30, ph: 1.4, temp: 8, humidity: 20, rainfall: 350 },
-    soils: ['Black', 'Alluvial', 'Deep Loam'],
-    yield_acre_kg: 950,
-    market_rate_kg: 72,
-    rationale: 'Black cotton soil with high moisture retention and sunny conditions optimize boll formation and long staple cotton yield.'
-  },
-  {
-    name: 'Tomato (Hybrid)',
-    season: 'Year-Round',
-    optimal: { n: 140, p: 80, k: 100, ph: 6.5, temp: 24, humidity: 65, rainfall: 600 },
-    tolerances: { n: 50, p: 30, k: 40, ph: 1.0, temp: 6, humidity: 20, rainfall: 300 },
-    soils: ['Loamy', 'Sandy Loam', 'Red Loam'],
-    yield_acre_kg: 9500,
-    market_rate_kg: 26,
-    rationale: 'High potassium levels and warm daytime temperatures trigger continuous flowering and firm, rot-resistant fruit setting.'
-  },
-  {
-    name: 'Maize (Corn)',
-    season: 'Kharif / Rabi',
-    optimal: { n: 110, p: 50, k: 40, ph: 6.5, temp: 26, humidity: 65, rainfall: 750 },
-    tolerances: { n: 40, p: 20, k: 20, ph: 1.3, temp: 8, humidity: 25, rainfall: 350 },
-    soils: ['Loamy', 'Alluvial', 'Red'],
-    yield_acre_kg: 2800,
-    market_rate_kg: 24,
-    rationale: 'Excellent nutrient uptake efficiency in well-aerated loam soil delivers heavy cobs with high starch density.'
-  },
-  {
-    name: 'Sugarcane',
-    season: 'Annual',
-    optimal: { n: 250, p: 100, k: 120, ph: 7.0, temp: 30, humidity: 75, rainfall: 1800 },
-    tolerances: { n: 70, p: 40, k: 50, ph: 1.5, temp: 9, humidity: 20, rainfall: 700 },
-    soils: ['Deep Alluvial', 'Black', 'Clay Loam'],
-    yield_acre_kg: 38000,
-    market_rate_kg: 4.2,
-    rationale: 'Abundant water supply and rich organic nitrogen sustain extensive vegetative growth and maximum sucrose concentration.'
-  },
-  {
-    name: 'Onions',
-    season: 'Rabi / Late Kharif',
-    optimal: { n: 90, p: 60, k: 80, ph: 6.8, temp: 22, humidity: 60, rainfall: 500 },
-    tolerances: { n: 30, p: 25, k: 30, ph: 1.0, temp: 7, humidity: 20, rainfall: 250 },
-    soils: ['Sandy Loam', 'Loamy', 'Alluvial'],
-    yield_acre_kg: 10500,
-    market_rate_kg: 22,
-    rationale: 'Friable sandy loam soil with good drainage and adequate phosphorus prevents bulb rot and fosters uniform sizing.'
-  },
-  {
-    name: 'Chickpea (Gram)',
-    season: 'Rabi',
-    optimal: { n: 30, p: 50, k: 30, ph: 7.2, temp: 20, humidity: 55, rainfall: 450 },
-    tolerances: { n: 20, p: 25, k: 20, ph: 1.2, temp: 6, humidity: 20, rainfall: 200 },
-    soils: ['Black', 'Loamy', 'Clay Loam'],
-    yield_acre_kg: 850,
-    market_rate_kg: 68,
-    rationale: 'Leguminous nitrogen-fixing capability thrives in low-nitrogen soil, requiring minimal synthetic fertilizer and conserving soil health.'
-  }
-];
-
-app.post('/api/ai/crop-recommendation', authMiddleware, (req, res) => {
-  const {
-    soil_type = 'Loamy',
-    nitrogen = 110,
-    phosphorus = 55,
-    potassium = 45,
-    temperature = 24,
-    humidity = 65,
-    rainfall = 800,
-    ph = 6.6
-  } = req.body;
-
-  const N = parseFloat(nitrogen) || 100;
-  const P = parseFloat(phosphorus) || 50;
-  const K = parseFloat(potassium) || 40;
-  const T = parseFloat(temperature) || 25;
-  const H = parseFloat(humidity) || 60;
-  const R = parseFloat(rainfall) || 700;
-  const PH = parseFloat(ph) || 6.5;
+  const N = Math.max(0, Math.min(500, parseFloat(nitrogen)  || 100));
+  const P = Math.max(0, Math.min(500, parseFloat(phosphorus) || 50));
+  const K = Math.max(0, Math.min(500, parseFloat(potassium)  || 40));
+  const T = Math.max(-10, Math.min(55, parseFloat(temperature) || 25));
+  const H = Math.max(0, Math.min(100, parseFloat(humidity)   || 60));
+  const R = Math.max(0, Math.min(5000, parseFloat(rainfall)  || 700));
+  const PH = Math.max(4, Math.min(9, parseFloat(ph) || 6.5));
   const inputSoil = String(soil_type).toLowerCase();
 
+  const start = Date.now();
   const scoredCrops = CROPS_AGRONOMY_DB.map(crop => {
-    const opt = crop.optimal;
-    const tol = crop.tolerances;
-
-    const diffN = Math.abs(N - opt.n) / tol.n;
-    const diffP = Math.abs(P - opt.p) / tol.p;
-    const diffK = Math.abs(K - opt.k) / tol.k;
-    const diffT = Math.abs(T - opt.temp) / tol.temp;
-    const diffH = Math.abs(H - opt.humidity) / tol.humidity;
-    const diffR = Math.abs(R - opt.rainfall) / tol.rainfall;
-    const diffPH = Math.abs(PH - opt.ph) / tol.ph;
-
-    const paramScore = 100 - (diffN * 12 + diffP * 12 + diffK * 12 + diffT * 22 + diffH * 14 + diffR * 16 + diffPH * 12);
-    let soilBonus = 0;
-    if (crop.soils.some(s => s.toLowerCase().includes(inputSoil) || inputSoil.includes(s.toLowerCase()))) {
-      soilBonus = 12;
-    } else {
-      soilBonus = -8;
-    }
-
+    const opt = crop.optimal, tol = crop.tolerances;
+    const diff = (v, o, t) => Math.abs(v - o) / t;
+    const paramScore = 100 - (
+      diff(N, opt.n, tol.n) * 12 + diff(P, opt.p, tol.p) * 12 +
+      diff(K, opt.k, tol.k) * 12 + diff(T, opt.temp, tol.temp) * 22 +
+      diff(H, opt.humidity, tol.humidity) * 14 + diff(R, opt.rainfall, tol.rainfall) * 16 +
+      diff(PH, opt.ph, tol.ph) * 12
+    );
+    const soilBonus = crop.soils.some(s => s.toLowerCase().includes(inputSoil) || inputSoil.includes(s.toLowerCase())) ? 12 : -8;
     const finalMatch = Math.min(99, Math.max(35, Math.round(paramScore + soilBonus)));
-    const revenueEst = Math.round(crop.yield_acre_kg * crop.market_rate_kg);
-
     return {
-      crop_name: crop.name,
-      season: crop.season,
-      match_score: finalMatch,
+      crop_name: crop.name, season: crop.season, match_score: finalMatch,
       suitable_soils: crop.soils,
       expected_yield_per_acre: `${crop.yield_acre_kg.toLocaleString()} kg`,
       market_rate_per_kg: `₹${crop.market_rate_kg}`,
-      estimated_gross_revenue_per_acre: `₹${revenueEst.toLocaleString()}`,
+      estimated_gross_revenue_per_acre: `₹${Math.round(crop.yield_acre_kg * crop.market_rate_kg).toLocaleString()}`,
       rationale: crop.rationale,
       optimal_factors: {
-        nitrogen: `${opt.n} kg/ha (Current: ${N})`,
-        phosphorus: `${opt.p} kg/ha (Current: ${P})`,
-        potassium: `${opt.k} kg/ha (Current: ${K})`,
-        temperature: `${opt.temp}°C (Current: ${T}°C)`,
-        rainfall: `${opt.rainfall} mm (Current: ${R} mm)`,
-        ph: `${opt.ph} (Current: ${PH})`
+        nitrogen: `${opt.n} kg/ha (Input: ${N})`, phosphorus: `${opt.p} kg/ha (Input: ${P})`,
+        potassium: `${opt.k} kg/ha (Input: ${K})`, temperature: `${opt.temp}°C (Input: ${T}°C)`,
+        rainfall: `${opt.rainfall} mm (Input: ${R} mm)`, ph: `${opt.ph} (Input: ${PH})`
       }
     };
   }).sort((a, b) => b.match_score - a.match_score);
+  const elapsed = Date.now() - start;
 
   res.json({
     recommended_crops: scoredCrops,
@@ -726,56 +660,48 @@ app.post('/api/ai/crop-recommendation', authMiddleware, (req, res) => {
       nitrogen_status: N < 80 ? 'Deficient' : N > 150 ? 'Excess' : 'Optimal',
       climate_category: T > 30 ? 'Hot / Tropical' : T < 18 ? 'Cool / Temperate' : 'Warm Moderate'
     },
-    model_info: {
-      name: 'AgriCropPredictor v2.4',
-      device: 'Snapdragon X Elite NPU (INT8 Quantized)',
+    engine_info: {
+      name: 'Agronomic Scoring Engine v2.1',
+      type: 'Rule-based weighted scoring matrix (7 parameters)',
       parameters_evaluated: 7,
-      inference_time_ms: 11.4,
-      accuracy: '96.2%'
+      crops_in_database: CROPS_AGRONOMY_DB.length,
+      execution_time_ms: elapsed,
+      execution_environment: 'Node.js / CPU',
+      note: 'This is deterministic agronomic scoring, not ML inference. No NPU hardware is used.'
     }
   });
 });
 
-// 2. AI Harvest Prediction Engine
-app.post('/api/ai/harvest-prediction', authMiddleware, (req, res) => {
+// ─── HARVEST PREDICTION ENGINE (heuristic) ────────────────────────────────────
+app.post('/api/ai/harvest-prediction', authMiddleware, aiLimiter, (req, res) => {
   const { crop_name, acreage = 1, planting_date, location = 'Nashik', soil_type = 'Loamy' } = req.body;
   const normCrop = (crop_name || 'Tomatoes').toLowerCase();
-  const acres = Math.max(0.2, parseFloat(acreage) || 1);
+  const acres = Math.max(0.2, Math.min(10000, parseFloat(acreage) || 1));
 
-  // Baseline yield per acre in kg & duration in days
   const CROP_METRICS = {
-    tomatoes: { days: 90, yieldPerAcre: 8500, pricePerKg: 28, perishability: 'High' },
-    wheat: { days: 135, yieldPerAcre: 1850, pricePerKg: 32, perishability: 'Low' },
-    rice: { days: 120, yieldPerAcre: 2200, pricePerKg: 40, perishability: 'Low' },
-    grapes: { days: 150, yieldPerAcre: 4200, pricePerKg: 75, perishability: 'High' },
-    onions: { days: 105, yieldPerAcre: 10500, pricePerKg: 22, perishability: 'Medium' },
-    potatoes: { days: 95, yieldPerAcre: 11500, pricePerKg: 20, perishability: 'Medium' },
-    corn: { days: 100, yieldPerAcre: 2600, pricePerKg: 24, perishability: 'Low' },
-    sugarcane: { days: 330, yieldPerAcre: 36000, pricePerKg: 4.2, perishability: 'Low' },
-    cotton: { days: 165, yieldPerAcre: 980, pricePerKg: 70, perishability: 'Low' }
+    tomatoes:  { days: 90,  yieldPerAcre: 8500,  pricePerKg: 28, perishability: 'High' },
+    wheat:     { days: 135, yieldPerAcre: 1850,  pricePerKg: 32, perishability: 'Low' },
+    rice:      { days: 120, yieldPerAcre: 2200,  pricePerKg: 40, perishability: 'Low' },
+    grapes:    { days: 150, yieldPerAcre: 4200,  pricePerKg: 75, perishability: 'High' },
+    onions:    { days: 105, yieldPerAcre: 10500, pricePerKg: 22, perishability: 'Medium' },
+    potatoes:  { days: 95,  yieldPerAcre: 11500, pricePerKg: 20, perishability: 'Medium' },
+    corn:      { days: 100, yieldPerAcre: 2600,  pricePerKg: 24, perishability: 'Low' },
+    sugarcane: { days: 330, yieldPerAcre: 36000, pricePerKg: 4.2,perishability: 'Low' },
+    cotton:    { days: 165, yieldPerAcre: 980,   pricePerKg: 70, perishability: 'Low' }
   };
 
   const matchedKey = Object.keys(CROP_METRICS).find(k => normCrop.includes(k)) || 'tomatoes';
   const metric = CROP_METRICS[matchedKey];
-
-  // Planting date parsing
-  const pDate = planting_date ? new Date(planting_date) : new Date(Date.now() - 45 * 24 * 3600 * 1000);
-  const harvestStart = new Date(pDate.getTime() + metric.days * 24 * 3600 * 1000);
-  const harvestPeak = new Date(harvestStart.getTime() + 7 * 24 * 3600 * 1000);
-  const harvestEnd = new Date(harvestStart.getTime() + 18 * 24 * 3600 * 1000);
-
+  const pDate = planting_date ? new Date(planting_date) : new Date(Date.now() - 45*24*3600*1000);
+  const harvestStart = new Date(pDate.getTime() + metric.days*24*3600*1000);
+  const harvestPeak  = new Date(harvestStart.getTime() + 7*24*3600*1000);
+  const harvestEnd   = new Date(harvestStart.getTime() + 18*24*3600*1000);
   const totalKg = Math.round(metric.yieldPerAcre * acres);
   const revenue = Math.round(totalKg * metric.pricePerKg);
-  const trips10Ton = Math.ceil(totalKg / 10000);
-  const trips3Ton = Math.ceil(totalKg / 3000);
 
   res.json({
-    crop: crop_name || 'Tomatoes',
-    acreage: acres,
-    predicted_yield: totalKg,
-    unit: 'kg',
-    yield_metric_tons: (totalKg / 1000).toFixed(2),
-    confidence: 0.94,
+    crop: crop_name || 'Tomatoes', acreage: acres,
+    predicted_yield: totalKg, unit: 'kg',
     harvest_schedule: {
       planting_date: pDate.toISOString().split('T')[0],
       earliest_harvest_date: harvestStart.toISOString().split('T')[0],
@@ -784,562 +710,546 @@ app.post('/api/ai/harvest-prediction', authMiddleware, (req, res) => {
       growth_duration_days: metric.days
     },
     economic_forecast: {
-      estimated_mandi_rate: `₹${metric.pricePerKg}/kg`,
-      projected_gross_revenue: `₹${revenue.toLocaleString()}`,
-      estimated_net_profit: `₹${Math.round(revenue * 0.65).toLocaleString()}`
+      reference_mandi_rate: `₹${metric.pricePerKg}/kg (indicative — check live APMC rates)`,
+      projected_gross_revenue: `₹${revenue.toLocaleString()} (estimate)`,
+      estimated_net_profit: `₹${Math.round(revenue * 0.65).toLocaleString()} (estimate at ~65% margin)`
     },
     transport_logistics: {
       perishability_tier: metric.perishability,
       recommended_vehicle: totalKg > 6000 ? 'Truck (10-Ton)' : totalKg > 2000 ? 'Tempo (3-Ton)' : 'Mini Truck (2.5-Ton)',
-      recommended_trips: totalKg > 6000 ? trips10Ton : trips3Ton,
       cold_chain_required: metric.perishability === 'High'
     },
-    factors: {
-      soil_fertility: 'Optimal Micro-nutrients',
-      water_availability: 'Adequate Root Zone Saturation',
-      seasonal_pest_risk: 'Low (< 5% probability)'
-    },
-    recommendations: [
-      `Optimal picking window commences on ${harvestStart.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
-      `Estimated yield is ${totalKg.toLocaleString()} kg with expected gross realization of ₹${revenue.toLocaleString()}.`,
-      `Perishability rating is ${metric.perishability}. Reserve transport 3–5 days prior to peak harvest to secure vetted freight.`,
-      `Recommended fleet: ${totalKg > 6000 ? trips10Ton + ' trip(s) of 10-Ton Truck' : trips3Ton + ' trip(s) of 3-Ton Tempo'}.`
-    ],
-    model_info: {
-      name: 'HarvestPredictor v2.1',
-      device: 'Snapdragon X Elite NPU',
-      inference_time_ms: 8.4,
-      status: 'On-Device NPU Accelerated'
+    engine_info: {
+      name: 'Harvest Timing & Yield Estimator v2.1',
+      type: 'Heuristic: crop-specific lookup table + date arithmetic',
+      note: 'Yield estimates are based on average published ICAR figures, not real-time field measurements. Actual yield may vary by 20–40%. Economic projections use indicative market rates.'
     }
   });
 });
 
-// 3. Crop Disease Detection Engine
-app.post('/api/ai/crop-disease-detection', upload.single('file'), (req, res) => {
-  const cropType = (req.body.crop_type || 'Tomato').trim();
-  const file = req.file;
+// ─── CROP DISEASE DETECTION (real ONNX inference) ───────────────────────────
+function readDiseaseBenchmark() {
+  try {
+    const file = path.join(__dirname, 'models', 'plant_disease', 'benchmark.json');
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
 
-  const DISEASES_DB = {
-    tomato: [
-      {
-        name: 'Tomato Early Blight',
-        pathogen: 'Alternaria solani (Fungus)',
-        confidence: 0.94,
-        severity: 'Moderate (35% Leaf Area Affected)',
-        symptoms: 'Concentric dark brown rings ("target-board" spots) surrounded by chlorotic yellow halos on mature lower leaves.',
-        chemical_cure: 'Spray Mancozeb 75% WP @ 2.5 g/L or Azoxystrobin 23% SC @ 1 ml/L water every 10–14 days.',
-        organic_remedy: 'Apply Pseudomonas fluorescens bio-fungicide @ 10g/L or neem seed kernel extract (NSKE 5%). Avoid overhead sprinkler irrigation.',
-        urgency: 'Medium — Treat within 48–72 hours to prevent stem lesion progression.'
-      },
-      {
-        name: 'Tomato Late Blight',
-        pathogen: 'Phytophthora infestans (Oomycete)',
-        confidence: 0.96,
-        severity: 'Severe (60% Canopy Risk)',
-        symptoms: 'Rapidly spreading dark water-soaked greasy patches with white mildew fuzz on leaf undersides during humid weather.',
-        chemical_cure: 'Spray Metalaxyl-M + Mancozeb @ 2 g/L or Cymoxanil 8% + Mancozeb 64% WP immediately.',
-        organic_remedy: 'Destroy heavily blighted foliage, spray Copper Oxychloride 50% WP @ 3 g/L. Ensure maximum spacing and airflow.',
-        urgency: 'Critical — Highly contagious. Treat immediately within 24 hours.'
-      },
-      {
-        name: 'Bacterial Leaf Spot',
-        pathogen: 'Xanthomonas campestris pv. vesicatoria',
-        confidence: 0.91,
-        severity: 'Mild to Moderate',
-        symptoms: 'Small, circular water-soaked dark spots that develop dry parchment-like centers with translucent yellow margins.',
-        chemical_cure: 'Streptocycline (1 g in 10 L water) mixed with Copper Oxychloride (25 g in 10 L water).',
-        organic_remedy: 'Bordeaux mixture (1%) spray; sterilize pruning tools and avoid handling wet plants.',
-        urgency: 'Moderate'
-      }
-    ],
-    rice: [
-      {
-        name: 'Rice Blast Disease',
-        pathogen: 'Magnaporthe oryzae (Pyricularia oryzae)',
-        confidence: 0.95,
-        severity: 'High (45% Leaf Area)',
-        symptoms: 'Spindle-shaped elliptical lesions with grayish-white centers and reddish-brown borders on leaf blades and neck collars.',
-        chemical_cure: 'Spray Tricyclazole 75% WP @ 0.6 g/L or Isoprothiolane 40% EC @ 1.5 ml/L at initial symptom spotting.',
-        organic_remedy: 'Apply bio-agent Trichoderma viride @ 5g/L. Regulate excess chemical nitrogen application.',
-        urgency: 'High — Treat within 48 hours to preserve panicle formation.'
-      }
-    ],
-    wheat: [
-      {
-        name: 'Wheat Yellow (Stripe) Rust',
-        pathogen: 'Puccinia striiformis f. sp. tritici',
-        confidence: 0.93,
-        severity: 'Moderate',
-        symptoms: 'Linear rows of bright yellow/orange powdery pustules forming distinct stripes parallel to leaf veins.',
-        chemical_cure: 'Foliar spray of Propiconazole 25% EC @ 1 ml/L or Tebuconazole 25.9% EC @ 1.25 ml/L.',
-        organic_remedy: 'Sow certified rust-resistant cultivars (HD-2967, PBW-550). Apply fermented buttermilk solution 10%.',
-        urgency: 'High'
-      }
-    ],
-    general: [
-      {
-        name: 'Powdery Mildew',
-        pathogen: 'Erysiphe spp.',
-        confidence: 0.92,
-        severity: 'Mild to Moderate',
-        symptoms: 'Superficial talcum-powder-like white mycelial patches on upper leaf surfaces and young shoots.',
-        chemical_cure: 'Spray Wettable Sulfur 80% WP @ 2.5 g/L or Hexaconazole 5% SC @ 1 ml/L.',
-        organic_remedy: 'Baking soda solution (5g/L water + few drops vegetable oil) or milk whey solution (1:9 ratio).',
-        urgency: 'Low to Medium'
-      },
-      {
-        name: 'Healthy Foliage',
-        pathogen: 'None (Healthy Specimen)',
-        confidence: 0.98,
-        severity: 'None (0% Disease)',
-        symptoms: 'Vibrant chlorophyll distribution, intact cuticle, no chlorotic rings, necrosis, or pathogen sporulation.',
-        chemical_cure: 'No fungicide intervention required.',
-        organic_remedy: 'Maintain balanced micronutrient fertigation and routine prophylactic bio-spray.',
-        urgency: 'None — Excellent vegetative vigour.'
-      }
-    ]
-  };
-
-  const norm = cropType.toLowerCase();
-  let pool = DISEASES_DB.general;
-  if (norm.includes('tomato')) pool = DISEASES_DB.tomato;
-  else if (norm.includes('rice')) pool = DISEASES_DB.rice;
-  else if (norm.includes('wheat')) pool = DISEASES_DB.wheat;
-
-  // Select diagnosis based on random seed or file size characteristics
-  const selectedIndex = file ? (file.size % pool.length) : 0;
-  const diagnosis = pool[selectedIndex] || pool[0];
-
+app.get('/api/ai/disease-model', (req, res) => {
   res.json({
-    crop_analyzed: cropType,
-    image_received: file ? file.originalname : 'leaf_sample.jpg',
-    image_url: file ? `/uploads/${file.filename}` : null,
-    diagnosis: diagnosis.name,
-    pathogen: diagnosis.pathogen,
-    confidence_score: diagnosis.confidence,
-    severity_level: diagnosis.severity,
-    urgency_level: diagnosis.urgency,
-    clinical_symptoms: diagnosis.symptoms,
-    treatment_protocol: {
-      chemical_intervention: diagnosis.chemical_cure,
-      organic_and_cultural: diagnosis.organic_remedy
-    },
-    prevention_measures: [
-      'Maintain wide row spacing to allow full sunlight and airflow through lower foliage.',
-      'Adopt drip irrigation instead of sprinkler systems to keep foliage dry overnight.',
-      'Rotate crops every season with non-host legume families.',
-      'Sanitize all pruning shears and farming tools with a 10% bleach solution between beds.'
-    ],
-    model_info: {
-      name: 'AgriVisionNet-ResNet50',
-      device: 'Snapdragon X Elite NPU',
-      quantization: 'INT8 Precision',
-      inference_time_ms: 12.8,
-      status: 'On-Device CV Inference'
-    }
+    model: disease.getModelInfo(),
+    runtime: disease.getRuntimeInfo(),
+    benchmark: readDiseaseBenchmark(),
+    note: 'Predictions come from a MobileNetV2 ONNX model trained on PlantVillage. It is not a substitute for an agronomist.'
   });
 });
 
-// 4. Real Route Optimization Engine
-app.post('/api/ai/route-optimization', authMiddleware, (req, res) => {
+app.get('/api/ai/disease-model/benchmark', (req, res) => {
+  const benchmark = readDiseaseBenchmark();
+  if (!benchmark) {
+    return res.status(404).json({ detail: 'No benchmark has been recorded for this deployment. Run npm run benchmark:model.' });
+  }
+  res.json(benchmark);
+});
+
+app.post('/api/ai/crop-disease-detection', authMiddleware, aiLimiter, uploadLimiter, imageUpload.single('file'), async (req, res, next) => {
+  const file = req.file;
+  const cleanup = () => { if (file) fs.promises.unlink(file.path).catch(() => {}); };
+
+  if (!file) {
+    return res.status(400).json({ detail: 'A leaf image is required (multipart field name: file).' });
+  }
+  if (!disease.modelAvailable()) {
+    cleanup();
+    return res.status(503).json({
+      detail: 'Disease model is not installed on this server.',
+      model: disease.getModelInfo(),
+      note: 'KrishiDrive does not return simulated predictions when the model is unavailable.'
+    });
+  }
+
+  try {
+    const result = await disease.classify(file.path, { topK: 5 });
+    const declared = (req.body.crop_type || '').trim();
+    const predictedCrop = result.prediction.crop || '';
+    const cropMismatch = Boolean(
+      declared &&
+      predictedCrop &&
+      !declared.toLowerCase().includes(predictedCrop.toLowerCase()) &&
+      !predictedCrop.toLowerCase().includes(declared.toLowerCase())
+    );
+
+    res.json({
+      crop_declared: declared || null,
+      prediction: result.prediction,
+      top_predictions: result.top_predictions,
+      crop_mismatch: cropMismatch,
+      crop_mismatch_note: cropMismatch
+        ? `The image looks like ${predictedCrop}, but the form declared ${declared}. Check that the correct photo and crop were selected.`
+        : null,
+      image: {
+        original_name: file.originalname,
+        stored_name: file.filename,
+        url: `/uploads/${file.filename}`,
+        bytes: file.size
+      },
+      agronomic_guidance: result.agronomic_guidance,
+      latency_ms: result.latency_ms,
+      model: result.model,
+      engine_info: {
+        name: 'PlantVillage MobileNetV2 ONNX classifier',
+        type: 'ML inference (ONNX Runtime)',
+        execution_provider: result.model.execution_provider_actual,
+        agronomic_guidance: 'Separate rule-based reference table, not model output'
+      },
+      disclaimer: result.disclaimer
+    });
+  } catch (err) {
+    cleanup();
+    if (err.status === 400 || err.status === 413 || err.status === 503) {
+      return res.status(err.status).json({ detail: err.message, code: err.code || null });
+    }
+    next(err);
+  }
+});
+
+// ─── ROUTE OPTIMIZATION (OSRM road network + labelled fallback) ─────────────
+function sampleGeometry(points, maxPoints = 800) {
+  if (!Array.isArray(points) || points.length <= maxPoints) return points || [];
+  const step = (points.length - 1) / (maxPoints - 1);
+  return Array.from({ length: maxPoints }, (_, i) => points[Math.round(i * step)]);
+}
+
+app.post('/api/ai/route-optimization', authMiddleware, aiLimiter, async (req, res) => {
   const { pickup = 'Nashik', destination = 'Mumbai', vehicle_type = 'Truck (10-Ton)', load = 5000 } = req.body;
 
-  const pCoord = resolveCoords(pickup) || { name: pickup, lat: 19.9975, lng: 73.7898 };
-  const dCoord = resolveCoords(destination) || { name: destination, lat: 18.9220, lng: 72.8347 };
+  if (String(pickup).length > 120 || String(destination).length > 120) {
+    return res.status(400).json({ detail: 'Pickup and destination must be under 120 characters' });
+  }
 
-  // Calculate actual Haversine distance * winding road multiplier (1.28)
-  const aerialDist = haversineDistance(pCoord.lat, pCoord.lng, dCoord.lat, dCoord.lng);
-  const roadBaseDist = Math.max(25, Math.round(aerialDist * 1.28));
+  const routeResult = await routePlaces(pickup, destination);
+  if (!routeResult.available || !routeResult.routes || !routeResult.routes.length) {
+    return res.status(422).json({
+      detail: routeResult.reason || 'No route could be calculated',
+      source: routeResult.source
+    });
+  }
 
-  const loadNum = parseFloat(load) || 3000;
+  const primary = routeResult.routes[0];
+  const routeDistance = primary.distance_km;
+  const routeTime = primary.duration_hours;
+
+  const loadNum = Math.max(1, Math.min(40000, parseFloat(load) || 3000));
   const vType = (vehicle_type || 'Truck').toLowerCase();
-
-  // Fuel consumption: liters per km based on vehicle type and weight
-  let baseLitersPerKm = 0.22; // Truck
+  let baseLitersPerKm = 0.22;
   if (vType.includes('tempo')) baseLitersPerKm = 0.13;
   else if (vType.includes('trailer')) baseLitersPerKm = 0.32;
   else if (vType.includes('mini')) baseLitersPerKm = 0.10;
 
-  const loadFactor = 1 + (loadNum / 15000) * 0.18;
+  const loadFactor = 1 + (Math.min(loadNum, 20000) / 15000) * 0.18;
   const effectiveFuelRate = baseLitersPerKm * loadFactor;
+  const fuel = Math.round(routeDistance * effectiveFuelRate * 10) / 10;
+  const tolls = Math.round(routeDistance * 2.1);
 
-  // 3 distinct realistic routes
-  const optDistance = Math.round(roadBaseDist * 0.94);
-  const optTime = Math.round((optDistance / 48) * 10) / 10;
-  const optFuel = Math.round(optDistance * effectiveFuelRate * 0.88 * 10) / 10;
-  const optTolls = Math.round(optDistance * 1.8);
-  const optCO2 = Math.round(optFuel * 2.68 * 10) / 10;
-
-  const fastDistance = roadBaseDist;
-  const fastTime = Math.round((fastDistance / 58) * 10) / 10;
-  const fastFuel = Math.round(fastDistance * effectiveFuelRate * 10) / 10;
-  const fastTolls = Math.round(fastDistance * 2.4);
-  const fastCO2 = Math.round(fastFuel * 2.68 * 10) / 10;
-
-  const shortDistance = Math.round(roadBaseDist * 0.88);
-  const shortTime = Math.round((shortDistance / 38) * 10) / 10;
-  const shortFuel = Math.round(shortDistance * effectiveFuelRate * 0.95 * 10) / 10;
-  const shortTolls = Math.round(shortDistance * 0.8);
-  const shortCO2 = Math.round(shortFuel * 2.68 * 10) / 10;
-
-  const fuelSaved = Math.round((fastFuel - optFuel) * 10) / 10;
-  const dieselPricePerLiter = 94; // INR
-  const moneySaved = Math.round(fuelSaved * dieselPricePerLiter + (fastTolls - optTolls));
+  const alternatives = routeResult.routes.map((r, index) => ({
+    id: r.id ?? index,
+    distance_km: r.distance_km,
+    duration_hours: r.duration_hours,
+    duration_minutes: r.duration_minutes,
+    is_primary: index === 0,
+    geometry: sampleGeometry(r.geometry)
+  }));
 
   res.json({
-    pickup: pCoord.name,
-    destination: dCoord.name,
-    vehicle_type: vehicle_type,
+    pickup: routeResult.from?.name || pickup,
+    destination: routeResult.to?.name || destination,
+    vehicle_type,
     load_kg: loadNum,
-    routes: [
-      {
-        name: 'AI Green Corridor (Recommended)',
-        highlight: 'Best Balance: 12% Fuel Savings & Smoothest Pavement',
-        distance_km: optDistance,
-        time_hours: optTime,
-        fuel_liters: optFuel,
-        tolls: `₹${optTolls}`,
-        co2_kg: optCO2,
-        road_quality: 'Four-Lane Express Bypass (NH Quality)',
-        ai_score: 96
-      },
-      {
-        name: 'Express Highway (Fastest)',
-        highlight: 'Fastest delivery time via high-speed tolled expressway',
-        distance_km: fastDistance,
-        time_hours: fastTime,
-        fuel_liters: fastFuel,
-        tolls: `₹${fastTolls}`,
-        co2_kg: fastCO2,
-        road_quality: 'Controlled Access Expressway',
-        ai_score: 88
-      },
-      {
-        name: 'State Highway / Low Toll Route',
-        highlight: 'Lowest toll expenditure, higher congestion',
-        distance_km: shortDistance,
-        time_hours: shortTime,
-        fuel_liters: shortFuel,
-        tolls: `₹${shortTolls}`,
-        co2_kg: shortCO2,
-        road_quality: 'Mixed Two-Lane State Highway',
-        ai_score: 79
-      }
-    ],
-    savings: {
-      fuel_saved_liters: fuelSaved,
-      cost_saved_inr: `₹${moneySaved}`,
-      co2_reduction_kg: Math.round((fastCO2 - optCO2) * 10) / 10,
-      time_saved_min: Math.max(10, Math.round((shortTime - optTime) * 60))
+    route: {
+      distance_km: routeDistance,
+      estimated_time_hours: routeTime,
+      fuel_liters_estimate: fuel,
+      estimated_tolls_inr: `₹${tolls.toLocaleString('en-IN')}`,
+      co2_kg_estimate: Math.round(fuel * 2.68 * 10) / 10
     },
-    model_info: {
-      name: 'SnapRouteOptimizer v3.0',
-      device: 'Snapdragon X Elite CPU/GPU + NPU',
-      algorithm: 'Dijkstra + 2-Opt Heuristic Path Pruning',
-      inference_time_ms: 6.9,
-      status: 'On-Device Accelerated'
+    route_source: routeResult.source,
+    is_estimate: Boolean(routeResult.is_estimate),
+    fetched_at: routeResult.fetched_at || null,
+    data_source: routeResult.source === 'osrm'
+      ? 'OSRM (OpenStreetMap road network)'
+      : 'Haversine straight-line estimate × 1.28 (OSRM unavailable)',
+    warning: routeResult.warning || null,
+    alternatives,
+    geometry: sampleGeometry(primary.geometry),
+    engine_info: {
+      name: 'Route Distance Engine v2.1',
+      type: routeResult.source === 'osrm' ? 'OSRM road-network routing' : 'Labelled Haversine fallback',
+      note: 'Fuel and CO2 figures are estimates based on vehicle type and load. Actual values depend on road conditions, driver behaviour, and traffic.'
     }
   });
 });
 
-// 5. Smart Transport Matching Engine
-app.post('/api/ai/transport-matching', authMiddleware, (req, res) => {
+// ─── TRANSPORT MATCHING ENGINE (deterministic scoring) ───────────────────────
+app.post('/api/ai/transport-matching', authMiddleware, aiLimiter, async (req, res) => {
   const { crop_type = 'Tomatoes', quantity = 5000, pickup = 'Nashik', destination = 'Mumbai' } = req.body;
-  const vehicles = loadData('vehicles.json', []).filter(v => v.status === 'available');
-  const users = loadData('users.json');
+  const vehicles = vehicleOps.listAll().filter(v => v.status === 'available');
   const qty = parseFloat(quantity) || 5000;
 
-  const matches = vehicles.map(v => {
-    const driverUser = v.driver ? users[v.driver] : null;
-    const capacityRatio = v.capacity >= qty ? 1 : v.capacity / qty;
-    const distanceToPickup = Math.round(12 + Math.random() * 35);
-    const tripDist = Math.round(160 + Math.random() * 80);
-    const ratePerKm = v.type.includes('Trailer') ? 45 : v.type.includes('Truck') ? 32 : 22;
-    const estimatedCost = Math.round(tripDist * ratePerKm + qty * 0.25);
+  const routeResult = await routePlaces(pickup, destination);
+  const primary = routeResult.available && routeResult.routes[0] ? routeResult.routes[0] : null;
+  // Do not invent a distance. If routing is unavailable, cost is reported as
+  // unknown rather than using a made-up baseline.
+  const baseDistance = primary ? primary.distance_km : null;
 
-    let score = Math.round((capacityRatio * 50 + (1 - distanceToPickup / 100) * 30 + 15) * 10) / 10;
-    if (v.verified) score += 5;
+  const matches = vehicles.map(v => {
+    const driver = v.driver ? userOps.safe(userOps.findByUsername(v.driver)) : null;
+    const capacityRatio = v.capacity >= qty ? 1 : v.capacity / qty;
+    // Use deterministic distance scoring: no Math.random()
+    const score = Math.round(capacityRatio * 55 + (v.verified ? 10 : 0) + (driver?.rating ? (driver.rating / 5) * 20 : 10));
+    const ratePerKm = v.type.includes('Trailer') ? 45 : v.type.includes('Truck') ? 32 : 22;
+    const estimatedCost = baseDistance === null
+      ? null
+      : Math.round(baseDistance * ratePerKm + qty * 0.25);
 
     return {
       vehicle: v,
-      driver: driverUser ? {
+      driver: driver ? {
         username: v.driver,
-        full_name: driverUser.full_name,
-        phone: driverUser.phone,
-        rating: driverUser.rating || 4.9,
-        verified: driverUser.verified || true,
-        trips_completed: driverUser.trips_completed || 28
-      } : {
-        username: 'driver1',
-        full_name: 'Vikram Singh',
-        phone: '+91 98765 43212',
-        rating: 4.9,
-        verified: true,
-        trips_completed: 48
-      },
-      match_score: Math.min(99, Math.round(score)),
-      distance_to_pickup_km: distanceToPickup,
+        full_name: driver.full_name,
+        rating: driver.rating,
+        verified: driver.verified,
+        trips_completed: driver.trips_completed
+      } : null,
+      match_score: Math.min(99, score),
       estimated_cost: estimatedCost,
-      estimated_cost_formatted: `₹${estimatedCost.toLocaleString()}`,
+      estimated_cost_formatted: estimatedCost === null ? 'Unavailable (no route)' : `₹${estimatedCost.toLocaleString('en-IN')}`,
       reasons: [
-        v.capacity >= qty ? `Ideal payload fit: ${v.capacity.toLocaleString()} kg capacity` : `Capacity ${v.capacity} kg: May require multi-trip consolidation`,
-        `${distanceToPickup} km from your pickup farm in ${pickup}`,
-        `Driver verified with ${driverUser?.rating || 4.9}★ rating and clean transit history`
+        v.capacity >= qty
+          ? `Adequate capacity: ${v.capacity.toLocaleString()} kg (load: ${qty.toLocaleString()} kg)`
+          : `Capacity ${v.capacity.toLocaleString()} kg may need multi-trip for ${qty.toLocaleString()} kg`,
+        v.verified ? 'Vehicle verified by KrishiDrive' : 'Vehicle not yet verified',
+        driver ? `Driver: ${driver.full_name} (${driver.rating || 'N/A'}★, ${driver.trips_completed || 0} trips)` : 'No assigned driver'
       ]
     };
   }).sort((a, b) => b.match_score - a.match_score);
 
   res.json({
-    crop: crop_type,
-    quantity_kg: qty,
+    crop: crop_type, quantity_kg: qty,
+    estimated_base_distance_km: baseDistance,
+    distance_source: routeResult.source,
+    distance_is_estimate: Boolean(routeResult.is_estimate),
+    distance_note: routeResult.source === 'osrm'
+      ? 'Actual road distance from OSRM'
+      : 'Straight-line x 1.28 estimate - OSRM was unavailable',
     matches,
-    model_info: {
-      name: 'TransportMatcher v2.2',
-      device: 'Snapdragon X Elite NPU',
-      algorithm: 'Multi-criteria Decision Matrix (MCDM)',
-      inference_time_ms: 5.1,
-      status: 'On-Device NPU Accelerated'
+    engine_info: {
+      name: 'Transport Matching Engine v2.1',
+      type: 'Deterministic multi-criteria scoring (capacity + verification + driver rating)',
+      note: 'Matching is based on fleet data registered in the KrishiDrive platform. Scores are indicative.'
     }
   });
 });
 
-// 6. AI Crop Assistant
-app.post('/api/ai/crop-assistant', authMiddleware, (req, res) => {
+// ─── AGRONOMIC CHAT ASSISTANT (keyword-based rule engine) ────────────────────
+app.post('/api/ai/crop-assistant', authMiddleware, aiLimiter, (req, res) => {
   const { question = '', crop_name = 'Tomatoes', location = 'Nashik' } = req.body;
   const q = question.toLowerCase();
   let answer = '';
 
-  if (q.includes('harvest') || q.includes('when') || q.includes('ready')) {
-    answer = `Based on current weather and agronomic data for your ${crop_name} in ${location}, optimal harvest begins within 2–3 weeks. Ensure relative soil moisture drops to 60% 4 days before harvesting to maximize storage longevity and prevent post-harvest mold.`;
-  } else if (q.includes('vehicle') || q.includes('transport') || q.includes('truck')) {
-    answer = `For perishable ${crop_name}, transport in well-ventilated crates during cooler morning hours (5:00 AM – 8:00 AM). A 10-Ton Truck with air-suspension or 3-Ton Tempo will minimize mechanical vibration damage across state highways.`;
-  } else if (q.includes('cost') || q.includes('save') || q.includes('money')) {
-    answer = `To maximize your profit margin on ${crop_name}: 1) Consolidate freight bookings with adjacent farmers to secure full-truckload rates, saving up to 22% per quintal; 2) Book drivers 48 hours ahead via the KrishiDrive matching engine; 3) Check wholesale APMC mandi rates across nearby hubs to target peak price windows.`;
-  } else if (q.includes('disease') || q.includes('pest') || q.includes('leaf') || q.includes('curl') || q.includes('blight')) {
-    answer = `For fungal and bacterial concerns on ${crop_name}: Inspect leaf undersides for concentric spots or powdery mold. Spray bio-agent Trichoderma viride @ 5g/L or Mancozeb 75% WP @ 2.5g/L. You can also upload a clear leaf photo directly in the KrishiDrive AI Lab for automated disease diagnosis!`;
-  } else if (q.includes('fertilizer') || q.includes('npk') || q.includes('soil')) {
-    answer = `For vegetative and fruit-setting stages in ${crop_name}: Apply balanced 19:19:19 NPK through fertigation, followed by Potassium Nitrate (13:0:45) at fruit enlargement to boost sweetness, size, and shelf stability.`;
-  } else {
-    answer = `Hello! I am your KrishiDrive On-Device Agronomy Assistant. I can help you with crop schedules, fertilizer advice, harvest timing, transport booking, cost optimization, and disease remedies. How can I assist your ${crop_name} farming today?`;
-  }
+  if (q.includes('harvest') || q.includes('when') || q.includes('ready'))
+    answer = `For ${crop_name} in ${location}: check your crop's expected harvest date in the "My Crops" section. Typical indicators of readiness include firm texture, full colour development, and separation from the calyx. Reduce irrigation 4 days before harvest to improve shelf life.`;
+  else if (q.includes('vehicle') || q.includes('transport') || q.includes('truck'))
+    answer = `For perishable ${crop_name}, transport during cool morning hours (5–8 AM) in ventilated crates. Use a 10-Ton Truck for loads above 6,000 kg, a 3-Ton Tempo for 2,000–6,000 kg. Book transport 2–3 days before your harvest date via the Transport section.`;
+  else if (q.includes('cost') || q.includes('save') || q.includes('money'))
+    answer = `To reduce transport costs for ${crop_name}: 1) Consolidate with nearby farmers for full-truckload rates; 2) Book 48 hours ahead to avoid surge pricing; 3) Compare mandi prices across APMC markets to target peak windows.`;
+  else if (q.includes('disease') || q.includes('pest') || q.includes('leaf') || q.includes('blight'))
+    answer = `For disease concerns on ${crop_name}: inspect leaf undersides for spots, powder, or discolouration. Common issues include Early Blight (concentric rings), Late Blight (water-soaked patches), or Powdery Mildew (white powder). Use the Disease Reference section for treatment guidance, and consult your local KVK for confirmation.`;
+  else if (q.includes('fertilizer') || q.includes('npk') || q.includes('soil'))
+    answer = `For ${crop_name}: balanced 19:19:19 NPK through fertigation during vegetative stage, followed by Potassium Nitrate (13:0:45) at fruit development. Always conduct a soil test before applying fertilizers.`;
+  else
+    answer = `Hello! I'm the KrishiDrive Agronomy Assistant. I can help with harvest timing, transport booking, cost reduction, disease reference information, and fertilizer guidance. What would you like to know about your ${crop_name} crop?`;
 
   res.json({
     answer,
-    confidence: 0.94,
-    suggestions: [
-      'When should I harvest my crop?',
-      'How to reduce transport costs?',
-      'Identify crop diseases',
-      'Recommend optimal fertilizer schedule'
-    ],
-    model_info: {
-      name: 'CropAssistant-LLM-QNN',
-      device: 'Snapdragon X Elite NPU',
-      status: 'On-Device Local Inference'
+    suggestions: ['When should I harvest my crop?', 'How to reduce transport costs?', 'Crop disease identification', 'Fertilizer schedule advice'],
+    engine_info: {
+      name: 'Agronomy Q&A Engine v2.1',
+      type: 'Keyword-based rule engine — NOT a language model',
+      note: 'Responses are based on agronomic best practices and keyword matching. Consult a certified agronomist for field-specific advice.'
     }
   });
 });
 
-// 7. AI Driver Assistant
-app.post('/api/ai/driver-assistant', authMiddleware, (req, res) => {
+// ─── DRIVER ASSISTANT (keyword-based rule engine) ─────────────────────────────
+app.post('/api/ai/driver-assistant', authMiddleware, aiLimiter, (req, res) => {
   const { question = '', current_location = 'Nashik', destination = 'Mumbai' } = req.body;
   const q = question.toLowerCase();
   let answer = '';
 
-  if (q.includes('route') || q.includes('navigate') || q.includes('road')) {
-    answer = `AI suggests the NH-48 Express Corridor from ${current_location} to ${destination}. The road is fully four-laned with minimal gradient and zero recorded traffic delays at the Kasara Ghat toll plaza right now. Estimated travel time is 3.8 hours.`;
-  } else if (q.includes('fuel') || q.includes('save') || q.includes('mileage')) {
-    answer = `Fuel optimization advisory: 1) Maintain steady cruising speed between 55–65 km/h in top gear; 2) Maintain cold tire pressure at 115 PSI for loaded trucks to reduce rolling resistance by 8%; 3) Avoid sudden engine braking on downslopes. You can save up to 14 liters of diesel on this trip!`;
-  } else if (q.includes('maintenance') || q.includes('service') || q.includes('brake') || q.includes('oil')) {
-    answer = `Diagnostic Reminder: Check brake fluid levels, engine oil viscosity, and radiator coolant before long highway hauls. Your vehicle has logged 35,000 km and will require air-filter cleaning in 2,500 km.`;
-  } else if (q.includes('earnings') || q.includes('job') || q.includes('payment')) {
-    answer = `Current platform market rate is ₹28–₹35 per km for agricultural freight. Returning with empty cargo reduces profitability by 42%. Use the "Available Jobs" tab to pick up return loads from wholesale mandis back towards ${current_location}!`;
-  } else {
-    answer = `Greetings! I am your KrishiDrive Transit Assistant. Ask me about highway conditions, fuel-saving techniques, vehicle checks, return-trip jobs, and weather along your transport corridor.`;
-  }
+  if (q.includes('route') || q.includes('navigate') || q.includes('road'))
+    answer = `For the route from ${current_location} to ${destination}: use the Route Planner section for distance and time estimates. Check real-time traffic on Google Maps before departure. Prefer national highways for faster transit and lower fuel consumption.`;
+  else if (q.includes('fuel') || q.includes('save') || q.includes('mileage'))
+    answer = `Fuel tips: maintain 55–65 km/h cruising speed in top gear, keep tyres inflated to recommended PSI, avoid sudden braking and acceleration, and turn off engine when stopped for more than 2 minutes. Regular air-filter cleaning improves fuel efficiency by 5–10%.`;
+  else if (q.includes('maintenance') || q.includes('service') || q.includes('brake'))
+    answer = `Pre-trip checklist: brake fluid levels, engine oil, radiator coolant, tyre pressure, and all lights. For vehicles over 10,000 km since last service, schedule a service before long hauls. Check your vehicle service dates in the "My Vehicle" section.`;
+  else if (q.includes('earnings') || q.includes('job') || q.includes('payment'))
+    answer = `Check the "Available Jobs" tab for open transport requests. Platform rates are set by farmer-posted jobs. To maximise earnings, look for return loads from APMC markets back towards your origin city.`;
+  else
+    answer = `Hello! I'm the KrishiDrive Driver Assistant. I can help with route planning, fuel saving tips, vehicle maintenance reminders, and job availability. What would you like to know?`;
 
   res.json({
     answer,
-    confidence: 0.95,
-    tips: [
-      'Maintain 60 km/h cruising speed for best fuel economy',
-      'Check tire pressure before loading heavy farm produce',
-      'Look for return loads in the Available Jobs tab to double profits'
-    ],
-    model_info: {
-      name: 'DriverAssistant-LLM-QNN',
-      device: 'Snapdragon X Elite NPU',
-      status: 'On-Device Local Inference'
+    tips: ['Check tyre pressure before loading heavy cargo', 'Look for return loads in Available Jobs to reduce empty runs', 'Maintain 60 km/h on state highways for best fuel economy'],
+    engine_info: {
+      name: 'Driver Advisory Engine v2.1',
+      type: 'Keyword-based rule engine — NOT a language model',
+      note: 'Advice is general best practice. Always verify road conditions with local sources before travel.'
     }
   });
 });
 
-// 8. Document Analysis
-app.post('/api/ai/document-analysis', upload.single('file'), (req, res) => {
-  const docType = req.body.document_type || 'Transport Receipt';
-  const file = req.file;
-
-  res.json({
-    analysis: {
-      document_type: docType,
-      confidence: 0.96,
-      filename: file ? file.originalname : 'receipt.pdf',
-      extracted_data: {
-        date: new Date().toISOString().split('T')[0],
-        invoice_number: 'KD-INV-' + Math.floor(100000 + Math.random() * 900000),
-        origin_mandi: 'Nashik Agricultural Produce Market Committee',
-        destination_hub: 'Vashi Wholesale Terminal, Navi Mumbai',
-        consignment: 'Fresh Grade-A Tomatoes — 5,000 kg (200 Crates)',
-        total_fare_inr: '₹14,500',
-        gst_status: 'Exempt (Agricultural Produce)',
-        verification_status: 'Verified Authenticated'
-      },
-      summary: 'Agricultural transit invoice verified successfully using Snapdragon on-device OCR. All weights, toll allowances, and farmer credentials match platform consignment TR001.',
-      model_info: {
-        name: 'DocAnalyzer-OCR v2',
-        device: 'Snapdragon X Elite NPU',
-        status: 'On-Device Accelerated'
-      }
-    }
+// ─── DOCUMENT ANALYSIS (disabled — no real OCR implemented) ──────────────────
+app.post('/api/ai/document-analysis', authMiddleware, uploadLimiter, (req, res) => {
+  res.status(501).json({
+    detail: 'Document OCR analysis is not implemented. KrishiDrive does not accept or store documents for this feature yet.',
+    roadmap: 'Requires a real OCR engine (for example Tesseract or a cloud OCR API); no simulated output is returned.'
   });
 });
 
-// ─── AGRICULTURAL WEATHER & ALERTS ───
-app.get('/api/weather', (req, res) => {
-  const loc = (req.query.location || 'Nashik').toLowerCase();
-  const weatherProfiles = {
-    nashik: { temp: 28, condition: 'Sunny & Favorable', humidity: 52, rain_chance: 5, wind_kmh: 12, advisory: 'Optimal conditions for crop spraying and produce transit.' },
-    mumbai: { temp: 31, condition: 'Humid & Clear', humidity: 76, rain_chance: 15, wind_kmh: 18, advisory: 'High humidity; ensure perishable produce is well-ventilated.' },
-    pune: { temp: 27, condition: 'Mild Breeze', humidity: 48, rain_chance: 10, wind_kmh: 14, advisory: 'Favorable harvesting and packaging weather.' },
-    ludhiana: { temp: 22, condition: 'Clear Sky', humidity: 58, rain_chance: 8, wind_kmh: 10, advisory: 'Ideal rabi harvest conditions with dry soil.' },
-    delhi: { temp: 25, condition: 'Moderate Sunshine', humidity: 50, rain_chance: 5, wind_kmh: 12, advisory: 'Dry transit conditions across outer ring corridors.' }
-  };
+// ─── WEATHER (Open-Meteo, live current conditions + 7-day forecast) ──────────
+app.get('/api/weather', async (req, res) => {
+  const location = String(req.query.location || 'Nashik').trim();
+  if (!location || location.length > 100) {
+    return res.status(400).json({ detail: 'Invalid location parameter' });
+  }
+  try {
+    const data = await getWeather(location);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 502).json({
+      available: false,
+      error: 'Weather data unavailable',
+      reason: err.message,
+      location,
+      source: 'Open-Meteo'
+    });
+  }
+});
 
-  const matched = Object.keys(weatherProfiles).find(k => loc.includes(k)) || 'nashik';
-  const data = weatherProfiles[matched];
+// ─── MANDI PRICES (Agmarknet via data.gov.in) ───────────────────────────────
+async function mandiHandler(req, res) {
+  const commodity = String(req.query.commodity || '').trim();
+  const state = String(req.query.state || '').trim();
+  const district = String(req.query.district || '').trim();
+  const market = String(req.query.market || '').trim();
+  const limit = Math.max(1, Math.min(500, parseInt(req.query.limit, 10) || 50));
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
+  if ([commodity, state, district, market].some(v => v.length > 80)) {
+    return res.status(400).json({ detail: 'Filter value too long' });
+  }
+
+  try {
+    const data = await getMandiPrices({ commodity, state, district, market, limit, offset });
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({
+      available: false,
+      configured: mandiConfigured(),
+      source: 'Agmarknet (data.gov.in)',
+      reason: err.message,
+      records: []
+    });
+  }
+}
+
+app.get('/api/mandi-prices', authMiddleware, mandiHandler);
+app.get('/api/market/prices', authMiddleware, mandiHandler);
+
+app.get('/api/market/status', (req, res) => {
   res.json({
-    location: req.query.location || 'Nashik, Maharashtra',
-    ...data,
-    forecast_3_days: [
-      { day: 'Tomorrow', temp: data.temp + 1, condition: 'Sunny', rain: '5%' },
-      { day: 'Day After', temp: data.temp - 1, condition: 'Partly Cloudy', rain: '12%' },
-      { day: 'In 3 Days', temp: data.temp, condition: 'Clear', rain: '0%' }
-    ]
+    configured: mandiConfigured(),
+    source: 'Agmarknet via data.gov.in',
+    setup_url: 'https://data.gov.in/',
+    env_var: 'AGMARKNET_API_KEY',
+    note: mandiConfigured()
+      ? 'Live prices are requested on demand and cached for 15 minutes.'
+      : 'No key configured. KrishiDrive does not display simulated prices.'
   });
 });
 
-// ─── NOTIFICATIONS ───
+// ─── NOTIFICATIONS (dynamic, based on real data) ──────────────────────────────
 app.get('/api/notifications', authMiddleware, (req, res) => {
-  const notifs = [
-    {
-      id: 1,
-      title: 'Harvest Window Approaching',
-      message: 'Your 5-acre Tomato crop in Nashik reaches peak maturity in 6 days.',
-      time: '2 hours ago',
-      type: 'crop',
-      read: false
-    },
-    {
-      id: 2,
-      title: 'New Transport Match Available',
-      message: 'Driver Vikram Singh (Truck 10-Ton) is 18 km away and ready for booking.',
-      time: '4 hours ago',
-      type: 'transport',
-      read: false
-    },
-    {
-      id: 3,
-      title: 'Optimal Weather Alert',
-      message: 'Clear sunny skies forecasted for the next 72 hours across Maharashtra.',
-      time: '1 day ago',
-      type: 'weather',
-      read: true
+  const notifs = [];
+  const user = req.user;
+
+  if (user.role === 'farmer') {
+    const crops  = cropOps.listByFarmer(user.username);
+    const reqs   = transportOps.listByFarmer(user.username);
+    const readyCrops = crops.filter(c => c.status === 'ready');
+    if (readyCrops.length > 0) {
+      notifs.push({ id: 'n-ready', title: 'Crops Ready for Harvest', message: `${readyCrops.map(c => c.name).join(', ')} ${readyCrops.length === 1 ? 'is' : 'are'} ready for harvest.`, type: 'crop', read: false });
     }
-  ];
+    const pending = reqs.filter(r => r.status === 'pending');
+    if (pending.length > 0) {
+      notifs.push({ id: 'n-pending', title: 'Transport Requests Pending', message: `${pending.length} transport request(s) awaiting driver acceptance.`, type: 'transport', read: false });
+    }
+    const matched = reqs.filter(r => r.status === 'matched');
+    if (matched.length > 0) {
+      notifs.push({ id: 'n-matched', title: 'Driver Matched', message: `${matched.length} request(s) have been matched with a driver.`, type: 'transport', read: false });
+    }
+  } else if (user.role === 'driver') {
+    const trips = tripOps.listByDriver(user.username);
+    const active = trips.filter(t => t.status === 'in_transit' || t.status === 'scheduled');
+    if (active.length > 0) {
+      notifs.push({ id: 'n-trip', title: 'Active Trip', message: `You have ${active.length} active trip(s). Check the Trips section.`, type: 'transport', read: false });
+    }
+  }
+
   res.json(notifs);
 });
 
-// ─── ADMIN ROUTES ───
-app.get('/api/admin/stats', authMiddleware, (req, res) => {
-  const users = loadData('users.json');
-  const crops = loadData('crops.json', []);
-  const reqs = loadData('transport_requests.json', []);
-  const trips = loadData('trips.json', []);
-
-  const farmers = Object.values(users).filter(u => u.role === 'farmer').length;
-  const drivers = Object.values(users).filter(u => u.role === 'driver').length;
-  const completedTrips = trips.filter(t => t.status === 'completed');
-  const totalRevenue = completedTrips.reduce((s, t) => s + (t.earnings || 3500), 0) + 45000;
+// ─── ADMIN ROUTES ─────────────────────────────────────────────────────────────
+app.get('/api/admin/stats', authMiddleware, requireRole('admin'), (req, res) => {
+  const allUsers   = userOps.listAll();
+  const allCrops   = cropOps.listAll();
+  const allReqs    = transportOps.listAll();
+  const allTrips   = tripOps.listAll();
+  const farmers    = allUsers.filter(u => u.role === 'farmer').length;
+  const drivers    = allUsers.filter(u => u.role === 'driver').length;
+  const completedTrips = allTrips.filter(t => t.status === 'completed');
+  const totalRevenue = completedTrips.reduce((s, t) => s + (t.earnings || 0), 0);
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthRevenue = completedTrips
+    .filter(t => String(t.completed_at || '').startsWith(monthKey))
+    .reduce((s, t) => s + (t.earnings || 0), 0);
 
   res.json({
-    total_users: Object.keys(users).length,
-    farmers,
-    drivers,
-    total_crops: crops.length,
-    active_crops: crops.filter(c => c.status === 'growing' || c.status === 'ready').length,
-    total_requests: reqs.length,
-    pending_requests: reqs.filter(r => r.status === 'pending').length,
-    matched_requests: reqs.filter(r => r.status === 'matched').length,
-    total_trips: trips.length,
-    active_trips: trips.filter(t => t.status === 'in_transit' || t.status === 'scheduled').length,
+    total_users: allUsers.length, farmers, drivers,
+    total_crops: allCrops.length,
+    active_crops: allCrops.filter(c => c.status === 'growing' || c.status === 'ready').length,
+    total_requests: allReqs.length,
+    pending_requests: allReqs.filter(r => r.status === 'pending').length,
+    matched_requests: allReqs.filter(r => r.status === 'matched').length,
+    total_trips: allTrips.length,
+    active_trips: allTrips.filter(t => t.status === 'in_transit' || t.status === 'scheduled').length,
     completed_trips: completedTrips.length,
     revenue: {
       total: totalRevenue,
-      this_month: Math.round(totalRevenue * 0.42),
+      this_month: monthRevenue,
       currency: 'INR',
-      formatted_total: `₹${totalRevenue.toLocaleString()}`
+      formatted_total: `₹${totalRevenue.toLocaleString('en-IN')}`,
+      month: monthKey
     },
     platform_health: {
       api: 'operational',
-      ai_engine: 'Snapdragon NPU Acceleration Ready',
-      database: 'Synchronized JSON Store',
-      uptime: '99.98%'
+      database: 'SQLite (better-sqlite3, WAL mode)',
+      auth: 'JWT + bcrypt',
+      disease_model: disease.modelAvailable() ? 'loaded' : 'not installed',
+      market_prices: mandiConfigured() ? 'configured' : 'not configured'
     }
   });
 });
 
-app.get('/api/admin/users', authMiddleware, (req, res) => {
-  const users = loadData('users.json');
-  const list = Object.entries(users).map(([k, u]) => {
-    const { hashed_password, ...rest } = u;
-    return rest;
-  });
-  res.json(list);
+app.get('/api/admin/users', authMiddleware, requireRole('admin'), (req, res) => {
+  res.json(userOps.listAll().map(userOps.safe));
 });
 
-// ─── HEALTH & SYSTEM STATUS ───
+// ─── HEALTH ENDPOINTS ────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({
-  name: 'KrishiDrive AI Platform',
-  tagline: 'Smart Farming. Smarter Transport. Powered by AI.',
-  version: '2.0.0-production',
+  name: 'KrishiDrive Platform',
+  version: '2.1.0',
   status: 'running',
-  hardware: 'Qualcomm Snapdragon X Elite NPU (45 TOPS)'
+  docs: '/api/ai/disease-model'
 }));
 
-app.get('/health', (req, res) => res.json({
-  status: 'healthy',
-  version: '2.0.0',
-  services: {
-    api: 'running',
-    ai_engine: 'online (NPU/CPU)',
-    database: 'active',
-    auth: 'jwt-ready'
-  }
-}));
+function dbHealthy() {
+  try { getDb().prepare('SELECT 1').get(); return true; } catch { return false; }
+}
 
-// Centralized Express Error Handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled Server Error:', err);
-  res.status(500).json({
-    detail: err.message || 'Internal Server Error'
+app.get('/health', (req, res) => {
+  const dbOk = dbHealthy();
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'healthy' : 'degraded',
+    version: '2.1.0',
+    timestamp: new Date().toISOString(),
+    uptime_seconds: Math.round(process.uptime())
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n======================================================`);
-  console.log(`  🌾 KrishiDrive AI Platform Backend v2.0 running`);
-  console.log(`  🚀 http://localhost:${PORT}`);
-  console.log(`  ⚡ Snapdragon X Elite NPU Acceleration: Active`);
-  console.log(`======================================================\n`);
+app.get('/ready', (req, res) => {
+  const dbOk = dbHealthy();
+  const model = disease.getModelInfo();
+  const marketOk = mandiConfigured();
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ready' : 'not_ready',
+    checks: {
+      database: dbOk ? 'ok' : 'error',
+      disease_model: model.available ? 'ok' : 'not_installed',
+      market_prices: marketOk ? 'configured' : 'not_configured',
+      weather: 'open-meteo (no key required)',
+      routing: OSRM_BASE_URL
+    },
+    note: 'A missing disease model or market API key does not stop the rest of the app; the affected feature reports that it is unavailable.'
+  });
 });
+
+app.get('/api/health/detailed', (req, res) => {
+  const dbOk = dbHealthy();
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'healthy' : 'degraded',
+    version: '2.1.0',
+    timestamp: new Date().toISOString(),
+    services: {
+      api: 'running',
+      database: dbOk ? 'SQLite OK (WAL, foreign_keys=ON)' : 'SQLite ERROR',
+      disease_model: disease.getModelInfo(),
+      disease_runtime: disease.getRuntimeInfo(),
+      weather_api: { provider: 'Open-Meteo', api_key_required: false, key_configured: Boolean(OPENMETEO_API_KEY) },
+      osrm_routing: { base_url: OSRM_BASE_URL, public_demo: OSRM_BASE_URL.includes('project-osrm.org') },
+      market_prices: { provider: 'Agmarknet via data.gov.in', configured: mandiConfigured() }
+    }
+  });
+});
+
+// ─── SERVE BUILT FRONTEND (single-container production deployment) ───────────
+const DIST_DIR = path.join(__dirname, '..', 'frontend', 'dist');
+if (process.env.SERVE_FRONTEND !== '0' && fs.existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR, { maxAge: '1h', index: false }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path === '/health' || req.path === '/ready') {
+      return next();
+    }
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
+}
+
+// ─── 404 for unknown API routes ───────────────────────────────────────────────
+app.use('/api', (req, res) => res.status(404).json({ detail: 'API route not found' }));
+
+// ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  if (err?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ detail: `Uploaded file exceeds the ${MAX_UPLOAD_SIZE/1024/1024}MB limit` });
+  if (err?.status === 400) return res.status(400).json({ detail: err.message });
+  console.error('Unhandled Server Error:', err);
+  res.status(500).json({ detail: 'Internal Server Error' });
+});
+
+// ─── START ────────────────────────────────────────────────────────────────────
+app.listen(PORT, () => {
+  console.log(`\n========================================================`);
+  console.log(`  🌾 KrishiDrive Platform Backend v2.1.0`);
+  console.log(`  🚀 http://localhost:${PORT}`);
+  console.log(`  🗄️  Database: SQLite (WAL mode, ACID transactions)`);
+  console.log(`  🔒 Security: Helmet + Rate Limiting + Input Validation`);
+  console.log(`  🌦️  Weather: Open-Meteo (${OPENMETEO_API_KEY ? 'API key configured' : 'free endpoint, no key'})`);
+  console.log(`  🗺️  Routing: OSRM (${OSRM_BASE_URL}) with labelled Haversine fallback`);
+  console.log(`  🧠  Disease model: ${disease.modelAvailable() ? 'ONNX (CPU)' : 'NOT INSTALLED'}`);
+  console.log(`  💹  Mandi prices: ${mandiConfigured() ? 'Agmarknet configured' : 'not configured (set AGMARKNET_API_KEY)'}`);
+  console.log(`========================================================\n`);
+});
+
+module.exports = app; // for testing

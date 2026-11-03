@@ -1,0 +1,33 @@
+services:
+  krishidrive:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: krishidrive:2.1.0
+    container_name: krishidrive-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+      - PORT=8000
+      - JWT_SECRET=${JWT_SECRET:-change_this_to_a_secure_random_64_char_secret_in_prod}
+      - OPENMETEO_API_KEY=${OPENMETEO_API_KEY:-}
+      - AGMARKNET_API_KEY=${AGMARKNET_API_KEY:-}
+      - OSRM_BASE_URL=${OSRM_BASE_URL:-https://router.project-osrm.org}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:8000}
+    volumes:
+      - krishidrive-data:/app/backend/data
+      - krishidrive-uploads:/app/backend/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  krishidrive-data:
+    driver: local
+  krishidrive-uploads:
+    driver: local

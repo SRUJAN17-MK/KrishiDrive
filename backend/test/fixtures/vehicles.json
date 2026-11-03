@@ -1,0 +1,50 @@
+[
+  {
+    "id": "V001",
+    "driver": "driver1",
+    "type": "Truck",
+    "number": "MH-12-AB-1234",
+    "capacity": 10000,
+    "fuel_type": "Diesel",
+    "mileage": 35000,
+    "insurance_valid": "2027-03-15",
+    "status": "available",
+    "last_service": "2026-08-01"
+  },
+  {
+    "id": "V002",
+    "driver": "driver2",
+    "type": "Tempo",
+    "number": "PB-10-CD-5678",
+    "capacity": 3000,
+    "fuel_type": "Diesel",
+    "mileage": 22000,
+    "insurance_valid": "2027-01-20",
+    "status": "available",
+    "last_service": "2026-07-15"
+  },
+  {
+    "id": "V003",
+    "driver": null,
+    "type": "Trailer",
+    "number": "KA-05-EF-9012",
+    "capacity": 20000,
+    "fuel_type": "Diesel",
+    "mileage": 78000,
+    "insurance_valid": "2026-12-31",
+    "status": "available",
+    "last_service": "2026-06-01"
+  },
+  {
+    "id": "V004",
+    "driver": null,
+    "type": "Mini Truck",
+    "number": "GJ-01-GH-3456",
+    "capacity": 2500,
+    "fuel_type": "Petrol",
+    "mileage": 15000,
+    "insurance_valid": "2027-06-10",
+    "status": "available",
+    "last_service": "2026-09-01"
+  }
+]

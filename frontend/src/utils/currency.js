@@ -51,7 +51,7 @@ export function formatINR(value, { decimals = 0 } = {}) {
 /**
  * Compact Indian notation for dashboard headline figures.
  *
- *   formatINRCompact(3500)       -> "\u20B93,500"
+ *   formatINRCompact(3500)       -> "\u20B93.5K"
  *   formatINRCompact(125000)     -> "\u20B91.25L"
  *   formatINRCompact(500000000)  -> "\u20B950Cr"
  */

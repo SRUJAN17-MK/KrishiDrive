@@ -10,10 +10,8 @@
     "vehicle_type": "Truck",
     "pickup_date": "2026-09-16",
     "preferred_time": "06:00 AM",
-    "status": "matched",
-    "created_at": "2026-09-10",
-    "driver": "driver1",
-    "vehicle": "V001"
+    "status": "pending",
+    "created_at": "2026-09-10"
   },
   {
     "id": "TR002",

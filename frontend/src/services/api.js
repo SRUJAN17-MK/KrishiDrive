@@ -1,93 +1,130 @@
+import { flushOutbox, queueAction } from '../utils/offline'
+
 const API_BASE = '/api'
+const QUEUEABLE = new Set([
+  ['POST', '/crops'],
+  ['POST', '/transport/request']
+])
 
-function headers() {
-  const t = localStorage.getItem('kd_token')
-  const h = { 'Content-Type': 'application/json' }
-  if (t) h['Authorization'] = `Bearer ${t}`
-  return h
-}
-
-function authHeaders() {
-  const t = localStorage.getItem('kd_token')
-  return t ? { 'Authorization': `Bearer ${t}` } : {}
-}
-
-async function handleRes(res) {
-  let data
-  try {
-    data = await res.json()
-  } catch (err) {
-    if (!res.ok) throw new Error(`HTTP Error ${res.status}`)
-    return {}
+export class ApiError extends Error {
+  constructor(message, status, data) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.data = data
   }
-  if (!res.ok) throw new Error(data.detail || data.message || 'API Error')
-  return data
+}
+
+export class OfflineQueuedError extends Error {
+  constructor(item) {
+    super('Saved offline')
+    this.name = 'OfflineQueuedError'
+    this.item = item
+  }
+}
+
+function token() {
+  return localStorage.getItem('kd_token')
+}
+
+function jsonHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  const current = token()
+  if (current) headers.Authorization = `Bearer ${current}`
+  return headers
+}
+
+function errorMessage(status, data) {
+  if (status === 401) return 'Session expired. Please sign in again.'
+  if (status === 403) return data?.detail || 'You do not have permission for this action.'
+  if (status === 404) return data?.detail || 'Not found.'
+  if (status === 429) return 'Too many requests. Please wait a moment.'
+  if (status >= 500) return data?.detail || 'The server hit an error. Please retry.'
+  return data?.detail || data?.message || `Request failed (${status})`
+}
+
+async function request(path, { method = 'GET', body, form, timeout = 30000, queue = false } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+  const headers = form ? (token() ? { Authorization: `Bearer ${token()}` } : {}) : (body === undefined ? (token() ? { Authorization: `Bearer ${token()}` } : {}) : jsonHeaders())
+
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: form || (body === undefined ? undefined : JSON.stringify(body)),
+      signal: controller.signal
+    })
+    const text = await res.text()
+    let data = null
+    if (text) {
+      try { data = JSON.parse(text) } catch { data = text }
+    }
+    if (!res.ok) throw new ApiError(errorMessage(res.status, data), res.status, data)
+    return data ?? {}
+  } catch (error) {
+    const offline = !navigator.onLine || error.name === 'AbortError' || error instanceof TypeError
+    if (offline && queue && method === 'POST' && [...QUEUEABLE].some(([m, p]) => m === method && p === path)) {
+      const item = queueAction({ method, path, body, label: path })
+      throw new OfflineQueuedError(item)
+    }
+    if (offline) {
+      const wrapped = new ApiError('Cannot reach the server. Check your connection and retry.', 0, null)
+      wrapped.cause = error
+      throw wrapped
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export const api = {
-  async get(ep) {
-    return handleRes(await fetch(`${API_BASE}${ep}`, { headers: headers() }))
-  },
-  async post(ep, body) {
-    return handleRes(await fetch(`${API_BASE}${ep}`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(body)
-    }))
-  },
-  async put(ep, body) {
-    return handleRes(await fetch(`${API_BASE}${ep}`, {
-      method: 'PUT',
-      headers: headers(),
-      body: JSON.stringify(body)
-    }))
-  },
-  async delete(ep) {
-    return handleRes(await fetch(`${API_BASE}${ep}`, {
-      method: 'DELETE',
-      headers: headers()
-    }))
-  },
-  async upload(ep, file, extra = {}) {
+  request,
+  get: (path) => request(path),
+  post: (path, body, options = {}) => request(path, { method: 'POST', body, ...options }),
+  put: (path, body, options = {}) => request(path, { method: 'PUT', body, ...options }),
+  delete: (path, options = {}) => request(path, { method: 'DELETE', ...options }),
+  async upload(path, file, extra = {}) {
     const fd = new FormData()
     if (file) fd.append('file', file)
-    Object.entries(extra).forEach(([k, v]) => fd.append(k, v))
-    return handleRes(await fetch(`${API_BASE}${ep}`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: fd
-    }))
+    Object.entries(extra).forEach(([key, value]) => fd.append(key, value))
+    return request(path, { method: 'POST', form: fd, timeout: 60000 })
   },
 
   auth: {
-    login: (d) => api.post('/auth/login', d),
-    register: (d) => api.post('/auth/register', d),
+    login: (d) => api.post('/auth/login', d, { timeout: 15000 }),
+    register: (d) => api.post('/auth/register', d, { timeout: 15000 }),
     me: () => api.get('/auth/me'),
-    updateProfile: (d) => api.put('/auth/profile', d),
+    updateProfile: (d) => api.put('/auth/profile', d)
+  },
+  health: {
+    status: () => api.get('/health/detailed'),
+    model: () => api.get('/ai/disease-model')
   },
   crops: {
     list: () => api.get('/crops'),
-    create: (d) => api.post('/crops', d),
+    get: (id) => api.get(`/crops/${id}`),
+    create: (d) => api.post('/crops', d, { queue: true }),
     update: (id, d) => api.put(`/crops/${id}`, d),
-    delete: (id) => api.delete(`/crops/${id}`),
+    delete: (id) => api.delete(`/crops/${id}`)
   },
   transport: {
     requests: () => api.get('/transport/requests'),
-    create: (d) => api.post('/transport/request', d),
-    match: (d) => api.post('/transport/match', d),
+    create: (d) => api.post('/transport/request', d, { queue: true }),
     accept: (d) => api.post('/transport/accept', d),
     reject: (d) => api.post('/transport/reject', d),
-    delete: (id) => api.delete(`/transport/requests/${id}`),
+    delete: (id) => api.delete(`/transport/requests/${id}`)
   },
   vehicles: {
-    list: () => api.get('/vehicles'),
+    list: () => api.get('/vehicles')
   },
   drivers: {
-    list: () => api.get('/drivers'),
+    list: () => api.get('/drivers')
   },
   trips: {
     list: () => api.get('/trips'),
-    update: (id, d) => api.put(`/trips/${id}`, d),
+    update: (id, d) => api.put(`/trips/${id}`, d)
   },
   ai: {
     cropRecommendation: (d) => api.post('/ai/crop-recommendation', d),
@@ -97,17 +134,30 @@ export const api = {
     transportMatching: (d) => api.post('/ai/transport-matching', d),
     cropAssistant: (d) => api.post('/ai/crop-assistant', d),
     driverAssistant: (d) => api.post('/ai/driver-assistant', d),
-    documentAnalysis: (d) => api.post('/ai/document-analysis', d),
+    documentAnalysis: (file, extra = {}) => api.upload('/ai/document-analysis', file, extra),
+    modelInfo: () => api.get('/ai/disease-model')
   },
   weather: {
-    get: (loc) => api.get(`/weather?location=${encodeURIComponent(loc || 'Nashik')}`),
+    get: (loc) => api.get(`/weather?location=${encodeURIComponent(loc || 'Nashik')}`)
+  },
+  market: {
+    status: () => api.get('/market/status'),
+    prices: (params = {}) => {
+      const query = new URLSearchParams()
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).trim() !== '') query.set(key, value)
+      })
+      return api.get(`/market/prices${query.toString() ? `?${query}` : ''}`)
+    }
   },
   notifications: {
-    list: () => api.get('/notifications'),
+    list: () => api.get('/notifications')
   },
   admin: {
     stats: () => api.get('/admin/stats'),
     users: () => api.get('/admin/users'),
-    verifyDriver: (username, verified) => api.post(`/admin/drivers/${username}/verify`, { verified }),
-  },
+    verifyDriver: (username, verified) => api.post(`/admin/drivers/${username}/verify`, { verified })
+  }
 }
+
+export { flushOutbox }

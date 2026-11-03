@@ -40,7 +40,8 @@
     "hashed_password": "$2a$10$514jB6a6NeAWBd0s65bCx.ceH77mooLs0vRf//TJNzOU.Ef857Ipi",
     "vehicle_id": "V002",
     "phone": "9876543213",
-    "created_at": "2026-03-05"
+    "created_at": "2026-03-05",
+    "verified": true
   },
   "admin": {
     "username": "admin",

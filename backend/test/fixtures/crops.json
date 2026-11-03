@@ -1,0 +1,67 @@
+[
+  {
+    "id": "C001",
+    "farmer": "farmer1",
+    "name": "Tomatoes",
+    "location": "Nashik, Maharashtra",
+    "acreage": 5,
+    "planting_date": "2026-06-01",
+    "expected_harvest": "2026-09-15",
+    "expected_qty": 8000,
+    "unit": "kg",
+    "status": "ready",
+    "image": null
+  },
+  {
+    "id": "C002",
+    "farmer": "farmer1",
+    "name": "Wheat",
+    "location": "Nashik, Maharashtra",
+    "acreage": 10,
+    "planting_date": "2026-04-01",
+    "expected_harvest": "2026-10-01",
+    "expected_qty": 15000,
+    "unit": "kg",
+    "status": "growing",
+    "image": null
+  },
+  {
+    "id": "C003",
+    "farmer": "farmer2",
+    "name": "Rice",
+    "location": "Ludhiana, Punjab",
+    "acreage": 8,
+    "planting_date": "2026-05-15",
+    "expected_harvest": "2026-09-30",
+    "expected_qty": 12000,
+    "unit": "kg",
+    "status": "ready",
+    "image": null
+  },
+  {
+    "id": "C004",
+    "farmer": "farmer1",
+    "name": "Grapes",
+    "location": "Nashik, Maharashtra",
+    "acreage": 3,
+    "planting_date": "2026-03-01",
+    "expected_harvest": "2026-08-20",
+    "expected_qty": 4000,
+    "unit": "kg",
+    "status": "harvested",
+    "image": null
+  },
+  {
+    "id": "C005",
+    "farmer": "farmer2",
+    "name": "Onions",
+    "location": "Ludhiana, Punjab",
+    "acreage": 6,
+    "planting_date": "2026-06-10",
+    "expected_harvest": "2026-11-15",
+    "expected_qty": 10000,
+    "unit": "kg",
+    "status": "growing",
+    "image": null
+  }
+]

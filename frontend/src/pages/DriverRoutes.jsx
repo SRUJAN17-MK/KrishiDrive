@@ -1,12 +1,30 @@
 import React, { useState } from 'react'
 import {
-  Route as RouteIcon, MapPin, Clock, Fuel, Zap, ArrowRight,
-  TrendingUp, Leaf, DollarSign, ShieldCheck, CheckCircle2
+  Route as RouteIcon, MapPin, Clock, Fuel, ArrowRight, Leaf,
+  AlertTriangle, CheckCircle2, RefreshCw, Gauge
 } from 'lucide-react'
 import { api } from '../services/api'
+import { useLanguage } from '../context/LanguageContext'
+import { PageHeader, ErrorBlock } from '../components/ui'
+import RouteMap from '../components/RouteMap'
+import { formatINR, CURRENCY_SYMBOL } from '../utils/currency'
 import toast from 'react-hot-toast'
 
+const hubs = [
+  { from: 'Nashik, Maharashtra', to: 'Vashi APMC Market, Mumbai' },
+  { from: 'Ludhiana, Punjab', to: 'Azadpur Mandi, Delhi' },
+  { from: 'Nashik, Maharashtra', to: 'Gultekdi Market Yard, Pune' },
+  { from: 'Nagpur, Maharashtra', to: 'Bhopal Mandi, Madhya Pradesh' }
+]
+
+const inputClass = 'w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500'
+
+function Field({ label, children }) {
+  return <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{label}<div className="mt-1">{children}</div></label>
+}
+
 export default function DriverRoutes() {
+  const { t } = useLanguage()
   const [form, setForm] = useState({
     pickup: 'Nashik, Maharashtra',
     destination: 'Vashi APMC Market, Mumbai',
@@ -15,216 +33,119 @@ export default function DriverRoutes() {
   })
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const commonHubs = [
-    { from: 'Nashik, Maharashtra', to: 'Vashi APMC Market, Mumbai' },
-    { from: 'Ludhiana, Punjab', to: 'Azadpur Mandi, Delhi' },
-    { from: 'Nashik, Maharashtra', to: 'Gultekdi Market Yard, Pune' },
-    { from: 'Nagpur, Maharashtra', to: 'Bhopal Mandi, Madhya Pradesh' }
-  ]
-
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
-
-  const handleSelectQuickHub = (hub) => {
-    setForm({ ...form, pickup: hub.from, destination: hub.to })
-  }
-
-  const optimize = async (e) => {
-    if (e) e.preventDefault()
+  const optimize = async (event) => {
+    if (event) event.preventDefault()
     setLoading(true)
     setResult(null)
+    setError('')
     try {
-      const res = await api.ai.routeOptimization(form)
-      setResult(res)
-      toast.success('Route optimized using Snapdragon NPU!')
+      const data = await api.ai.routeOptimization({ ...form, load: Number(form.load) })
+      setResult(data)
+      toast.success(data.route_source === 'osrm' ? 'Road route calculated' : 'Straight-line estimate calculated')
     } catch (err) {
-      toast.error(err.message || 'Optimization failed')
+      setError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div className="space-y-6 fade-in max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
-          AI Agricultural Route Optimizer
-        </h1>
-        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Calculate gradient-optimized highway paths to minimize diesel burn and transit vibration damage.
-        </p>
-      </div>
+  const isOsrm = result?.route_source === 'osrm'
 
-      {/* Quick Corridor Buttons */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {commonHubs.map((hub, i) => (
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Road routing"
+        title={t('driver.routePlanner')}
+        subtitle={t('driver.routeSubtitle')}
+      />
+
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-4">
+        {hubs.map((hub) => (
           <button
-            key={i}
-            onClick={() => handleSelectQuickHub(hub)}
-            className="text-xs whitespace-nowrap px-3.5 py-1.5 rounded-xl bg-white dark:bg-[#12211c] border border-gray-200 dark:border-[#1e362e] hover:border-emerald-500 text-gray-700 dark:text-gray-300 font-medium transition"
+            key={`${hub.from}-${hub.to}`}
+            type="button"
+            onClick={() => setForm((prev) => ({ ...prev, pickup: hub.from, destination: hub.to }))}
+            className="text-[11px] whitespace-nowrap px-3 py-1.5 rounded-xl bg-white dark:bg-[#12211c] border border-gray-200 dark:border-[#1e362e] hover:border-emerald-500 text-gray-700 dark:text-gray-300 font-semibold"
           >
             {hub.from.split(',')[0]} → {hub.to.split(',')[0]}
           </button>
         ))}
       </div>
 
-      {/* Input Form Card */}
-      <div className="bg-white dark:bg-[#12211c] rounded-2xl border border-gray-200 dark:border-[#1e362e] p-6 shadow-sm transition-colors">
-        <form onSubmit={optimize} className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Pickup Farm / City</label>
-            <input
-              name="pickup"
-              value={form.pickup}
-              onChange={handleChange}
-              required
-              placeholder="e.g. Nashik, Maharashtra"
-              className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Destination Mandi</label>
-            <input
-              name="destination"
-              value={form.destination}
-              onChange={handleChange}
-              required
-              placeholder="e.g. Vashi APMC, Mumbai"
-              className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Vehicle Class</label>
-            <select
-              name="vehicle_type"
-              value={form.vehicle_type}
-              onChange={handleChange}
-              className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="Truck (10-Ton)">Truck (10-Ton)</option>
-              <option value="Tempo (3-Ton)">Tempo (3-Ton)</option>
-              <option value="Mini Truck (2.5-Ton)">Mini Truck (2.5-Ton)</option>
-              <option value="Heavy Trailer (20-Ton)">Heavy Trailer (20-Ton)</option>
+      <form onSubmit={optimize} className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5 mb-5">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Field label={t('farmer.pickup')}><input required maxLength={120} className={inputClass} value={form.pickup} onChange={(e) => setForm({ ...form, pickup: e.target.value })} placeholder="Nashik, Maharashtra" /></Field>
+          <Field label={t('farmer.destination')}><input required maxLength={120} className={inputClass} value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} placeholder="Mumbai, Maharashtra" /></Field>
+          <Field label={t('farmer.vehicleType')}>
+            <select className={inputClass} value={form.vehicle_type} onChange={(e) => setForm({ ...form, vehicle_type: e.target.value })}>
+              <option>Truck (10-Ton)</option>
+              <option>Tempo (3-Ton)</option>
+              <option>Mini Truck (2.5-Ton)</option>
+              <option>Trailer (20-Ton)</option>
             </select>
-          </div>
+          </Field>
+          <Field label="Payload (kg)"><input type="number" min="1" max="40000" className={inputClass} value={form.load} onChange={(e) => setForm({ ...form, load: e.target.value })} /></Field>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 max-w-xl">OSRM uses the OpenStreetMap road network. If it is unreachable, the fallback is a straight-line Haversine estimate multiplied by 1.28 and labelled as such.</p>
+          <button type="submit" disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 px-5 py-2.5 text-xs font-bold text-white">
+            {loading ? <RefreshCw size={15} className="animate-spin" /> : <RouteIcon size={15} />} {loading ? t('common.loading') : t('driver.getRoute')}
+          </button>
+        </div>
+      </form>
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Payload Weight (kg)</label>
-            <input
-              name="load"
-              type="number"
-              value={form.load}
-              onChange={handleChange}
-              placeholder="e.g. 5000"
-              className="w-full px-3.5 py-2.5 border border-gray-200 dark:border-forest-800 dark:bg-[#162a23] dark:text-white rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
+      {error && <ErrorBlock message={error} onRetry={optimize} />}
 
-          <div className="md:col-span-2 lg:col-span-4 pt-1">
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 disabled:opacity-50 shadow"
-            >
-              <Zap size={16} className="text-amber-400" />
-              {loading ? 'Evaluating Highway Matrix...' : 'Run Route Optimization'}
-            </button>
-          </div>
-        </form>
-      </div>
+      {!loading && !result && !error && (
+        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-[#274a3d] p-10 text-center text-sm text-gray-500 dark:text-gray-400">
+          {t('driver.noRoute')}
+        </div>
+      )}
 
-      {/* Results View */}
       {result && (
-        <div className="space-y-6">
-          {/* Savings Highlight Ribbon */}
-          {result.savings && (
-            <div className="bg-gradient-to-r from-emerald-900 via-forest-900 to-[#122b21] rounded-3xl p-6 text-white border border-emerald-800/40 shadow-md">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">
-                <TrendingUp size={15} /> Snapdragon AI Optimization Savings
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center mt-3">
-                <div className="bg-white/10 backdrop-blur rounded-2xl p-3">
-                  <div className="text-[11px] text-gray-300">Fuel Saved</div>
-                  <div className="text-2xl font-black text-amber-400 mt-0.5">{result.savings.fuel_saved_liters} L</div>
-                </div>
-                <div className="bg-white/10 backdrop-blur rounded-2xl p-3">
-                  <div className="text-[11px] text-gray-300">Net Cost Savings</div>
-                  <div className="text-2xl font-black text-emerald-400 mt-0.5">{result.savings.cost_saved_inr}</div>
-                </div>
-                <div className="bg-white/10 backdrop-blur rounded-2xl p-3">
-                  <div className="text-[11px] text-gray-300">Time Saved</div>
-                  <div className="text-2xl font-black text-white mt-0.5">{result.savings.time_saved_min} min</div>
-                </div>
-                <div className="bg-white/10 backdrop-blur rounded-2xl p-3">
-                  <div className="text-[11px] text-gray-300">CO2 Reduction</div>
-                  <div className="text-2xl font-black text-cyan-300 mt-0.5">{result.savings.co2_reduction_kg} kg</div>
-                </div>
-              </div>
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${isOsrm ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'}`}>
+              {isOsrm ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {result.data_source}
+            </span>
+            <span className="text-[11px] text-gray-500">{result.pickup} → {result.destination}</span>
+            {result.fetched_at && <span className="text-[10px] text-gray-400">Fetched {new Date(result.fetched_at).toLocaleTimeString()}</span>}
+          </div>
+
+          {result.warning && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-300 flex gap-2">
+              <AlertTriangle size={16} className="shrink-0" /> {result.warning}
             </div>
           )}
 
-          {/* Route Comparison Cards */}
-          <div className="grid md:grid-cols-3 gap-5">
-            {result.routes?.map((route, i) => (
-              <div
-                key={i}
-                className={`bg-white dark:bg-[#12211c] rounded-2xl p-6 border card-hover flex flex-col justify-between transition-colors ${
-                  i === 0
-                    ? 'border-emerald-600 dark:border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
-                    : 'border-gray-200 dark:border-[#1e362e]'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    {i === 0 ? (
-                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300/40">
-                        AI Recommended
-                      </span>
-                    ) : (
-                      <span className="text-[11px] font-semibold text-gray-400">Alternative Path</span>
-                    )}
-                    <span className="text-xs font-black text-gray-700 dark:text-gray-300">Score: {route.ai_score}/100</span>
-                  </div>
+          <RouteMap geometry={result.geometry} alternatives={result.alternatives} label={`${result.pickup} to ${result.destination}`} />
 
-                  <h3 className="font-extrabold text-gray-900 dark:text-white text-base mb-1">{route.name}</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{route.highlight}</p>
-
-                  <div className="space-y-2.5 text-xs bg-gray-50 dark:bg-[#162a23] p-4 rounded-xl border border-gray-100 dark:border-[#1e362e] text-gray-600 dark:text-gray-300">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 flex items-center gap-1.5"><MapPin size={13} /> Distance:</span>
-                      <strong className="text-gray-900 dark:text-white">{route.distance_km} km</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 flex items-center gap-1.5"><Clock size={13} /> Travel Time:</span>
-                      <strong className="text-gray-900 dark:text-white">{route.time_hours} Hours</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 flex items-center gap-1.5"><Fuel size={13} /> Fuel Needed:</span>
-                      <strong className="text-amber-600 dark:text-amber-400">{route.fuel_liters} Liters</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Estimated Tolls:</span>
-                      <strong className="text-gray-900 dark:text-white">{route.tolls}</strong>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 flex items-center gap-1.5"><Leaf size={13} /> Carbon:</span>
-                      <strong className="text-emerald-600 dark:text-emerald-400">{route.co2_kg} kg CO2</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-[#1e362e] text-[11px] text-gray-400">
-                  Surface: {route.road_quality}
-                </div>
-              </div>
-            ))}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">{t('common.distance')}</p><p className="text-xl font-extrabold">{result.route.distance_km} km</p></div>
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">{t('common.duration')}</p><p className="text-xl font-extrabold">{result.route.estimated_time_hours} h</p></div>
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">{t('driver.fuelEstimate')}</p><p className="text-xl font-extrabold">{result.route.fuel_liters_estimate} L</p></div>
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">{t('driver.tollEstimate')}</p><p className="text-xl font-extrabold">{result.route.estimated_tolls_inr}</p></div>
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">{t('driver.co2')}</p><p className="text-xl font-extrabold">{result.route.co2_kg_estimate} kg</p></div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-gray-400 pt-2">
-            <span>Model: {result.model_info?.name} ({result.model_info?.device})</span>
-            <span>Algorithm: {result.model_info?.algorithm} • {result.model_info?.inference_time_ms}ms</span>
+          <section className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4">
+            <h2 className="text-sm font-bold mb-3 flex items-center gap-2"><RouteIcon size={16} className="text-emerald-600" /> {t('driver.alternatives')}</h2>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {result.alternatives.map((alt, index) => (
+                <div key={alt.id} className={`rounded-xl border p-3 ${alt.is_primary ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30' : 'border-gray-200 dark:border-[#274a3d]'}`}>
+                  <p className="text-[11px] font-bold">{alt.is_primary ? t('driver.primaryRoute') : `${t('driver.alternatives')} ${index}`}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{alt.distance_km} km · {alt.duration_minutes} {t('common.min')}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <div className="rounded-xl bg-gray-50 dark:bg-[#162a23] p-3 text-[11px] text-gray-500 dark:text-gray-400">
+            <p className="font-semibold text-gray-700 dark:text-gray-200">{result.engine_info.name}</p>
+            <p className="mt-1">{result.engine_info.note}</p>
+            <p className="mt-1">Fuel, toll and CO₂ values are deterministic estimates from distance, vehicle class and payload. They are not live toll or fuel-price feeds.</p>
           </div>
         </div>
       )}

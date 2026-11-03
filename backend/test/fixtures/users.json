@@ -1,0 +1,53 @@
+{
+  "farmer1": {
+    "username": "farmer1",
+    "email": "ram@krishidrive.com",
+    "full_name": "Ram Patel",
+    "role": "farmer",
+    "hashed_password": "$2a$10$514jB6a6NeAWBd0s65bCx.ceH77mooLs0vRf//TJNzOU.Ef857Ipi",
+    "village": "Nashik",
+    "state": "Maharashtra",
+    "phone": "9876543210",
+    "created_at": "2026-01-15"
+  },
+  "farmer2": {
+    "username": "farmer2",
+    "email": "sita@krishidrive.com",
+    "full_name": "Sita Devi",
+    "role": "farmer",
+    "hashed_password": "$2a$10$514jB6a6NeAWBd0s65bCx.ceH77mooLs0vRf//TJNzOU.Ef857Ipi",
+    "village": "Ludhiana",
+    "state": "Punjab",
+    "phone": "9876543211",
+    "created_at": "2026-02-10"
+  },
+  "driver1": {
+    "username": "driver1",
+    "email": "vikram@krishidrive.com",
+    "full_name": "Vikram Singh",
+    "role": "driver",
+    "hashed_password": "$2a$10$514jB6a6NeAWBd0s65bCx.ceH77mooLs0vRf//TJNzOU.Ef857Ipi",
+    "vehicle_id": "V001",
+    "phone": "9876543212",
+    "created_at": "2026-01-20"
+  },
+  "driver2": {
+    "username": "driver2",
+    "email": "arjun@krishidrive.com",
+    "full_name": "Arjun Kumar",
+    "role": "driver",
+    "hashed_password": "$2a$10$514jB6a6NeAWBd0s65bCx.ceH77mooLs0vRf//TJNzOU.Ef857Ipi",
+    "vehicle_id": "V002",
+    "phone": "9876543213",
+    "created_at": "2026-03-05"
+  },
+  "admin": {
+    "username": "admin",
+    "email": "admin@krishidrive.com",
+    "full_name": "Admin User",
+    "role": "admin",
+    "hashed_password": "$2a$10$514jB6a6NeAWBd0s65bCx.ceH77mooLs0vRf//TJNzOU.Ef857Ipi",
+    "phone": "9876543200",
+    "created_at": "2026-01-01"
+  }
+}

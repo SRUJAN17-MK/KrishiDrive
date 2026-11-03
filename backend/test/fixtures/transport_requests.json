@@ -1,0 +1,48 @@
+[
+  {
+    "id": "TR001",
+    "farmer": "farmer1",
+    "crop": "Tomatoes",
+    "quantity": 5000,
+    "unit": "kg",
+    "pickup": "Nashik, Maharashtra",
+    "destination": "Mumbai, Maharashtra",
+    "vehicle_type": "Truck",
+    "pickup_date": "2026-09-16",
+    "preferred_time": "06:00 AM",
+    "status": "pending",
+    "created_at": "2026-09-10"
+  },
+  {
+    "id": "TR002",
+    "farmer": "farmer2",
+    "crop": "Rice",
+    "quantity": 8000,
+    "unit": "kg",
+    "pickup": "Ludhiana, Punjab",
+    "destination": "Delhi, NCR",
+    "vehicle_type": "Trailer",
+    "pickup_date": "2026-09-20",
+    "preferred_time": "05:00 AM",
+    "status": "matched",
+    "driver": "driver1",
+    "vehicle": "V001",
+    "created_at": "2026-09-12"
+  },
+  {
+    "id": "TR003",
+    "farmer": "farmer1",
+    "crop": "Grapes",
+    "quantity": 2000,
+    "unit": "kg",
+    "pickup": "Nashik, Maharashtra",
+    "destination": "Pune, Maharashtra",
+    "vehicle_type": "Tempo",
+    "pickup_date": "2026-09-14",
+    "preferred_time": "07:00 AM",
+    "status": "delivered",
+    "driver": "driver2",
+    "vehicle": "V002",
+    "created_at": "2026-09-08"
+  }
+]
