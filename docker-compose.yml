@@ -31,3 +31,4 @@ volumes:
     driver: local
   krishidrive-uploads:
     driver: local
+

@@ -59,3 +59,7 @@ coverage/
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 .dockerignore
+
+# ── GitHub workflows (require personal workflow scope token to push) ──────────
+.github/
+
