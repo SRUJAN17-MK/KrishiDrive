@@ -143,11 +143,95 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_trips_driver ON trips(driver);
     CREATE INDEX IF NOT EXISTS idx_trips_request ON trips(request);
+
+    -- KrishiDrive 3.0: Farms & Plots Table
+    CREATE TABLE IF NOT EXISTS farms (
+      id                     TEXT PRIMARY KEY NOT NULL,
+      farmer                 TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      name                   TEXT NOT NULL,
+      village                TEXT DEFAULT '',
+      district               TEXT DEFAULT '',
+      state                  TEXT DEFAULT '',
+      latitude               REAL DEFAULT 0,
+      longitude              REAL DEFAULT 0,
+      boundary_geojson       TEXT DEFAULT '[]',
+      area_acres             REAL DEFAULT 1,
+      area_hectares          REAL DEFAULT 0.4,
+      soil_type              TEXT DEFAULT 'Loamy',
+      soil_ph                REAL DEFAULT 6.5,
+      nitrogen               REAL DEFAULT 120,
+      phosphorus             REAL DEFAULT 50,
+      potassium              REAL DEFAULT 40,
+      organic_carbon_percent REAL DEFAULT 0.5,
+      is_lab_tested          INTEGER DEFAULT 0,
+      irrigation_type        TEXT DEFAULT 'Borewell',
+      created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_farms_farmer ON farms(farmer);
+
+    -- KrishiDrive 3.0: Live Satellite Remote Sensing & Analyses
+    CREATE TABLE IF NOT EXISTS satellite_analyses (
+      id                         TEXT PRIMARY KEY NOT NULL,
+      farm_id                    TEXT NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+      farmer                     TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      ndvi                       REAL DEFAULT 0.5,
+      ndwi                       REAL DEFAULT 0.2,
+      evi                        REAL DEFAULT 0.4,
+      soil_moisture_m3_m3        REAL DEFAULT 0.25,
+      surface_temp_c             REAL DEFAULT 26.5,
+      elevation_m                REAL DEFAULT 500,
+      slope_deg                  REAL DEFAULT 2.5,
+      environmental_summary_json TEXT DEFAULT '{}',
+      crop_recommendations_json  TEXT DEFAULT '[]',
+      created_at                 TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_sat_farm ON satellite_analyses(farm_id);
+    CREATE INDEX IF NOT EXISTS idx_sat_farmer ON satellite_analyses(farmer);
+
+    -- KrishiDrive 3.0: Support Tickets & Issues
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id          TEXT PRIMARY KEY NOT NULL,
+      username    TEXT NOT NULL,
+      category    TEXT DEFAULT 'general',
+      title       TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      status      TEXT DEFAULT 'open' CHECK(status IN ('open','in_progress','resolved')),
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- KrishiDrive 3.0: Audit Logs
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id           TEXT PRIMARY KEY NOT NULL,
+      action       TEXT NOT NULL,
+      actor        TEXT DEFAULT 'system',
+      details_json TEXT DEFAULT '{}',
+      ip_address   TEXT DEFAULT '',
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   const baseline = db.prepare('SELECT 1 FROM schema_migrations WHERE version = 1').get();
   if (!baseline) {
     db.prepare('INSERT INTO schema_migrations (version) VALUES (1)').run();
+  }
+
+  // Migration v2: OTP & Proof of Delivery columns
+  const v2 = db.prepare('SELECT 1 FROM schema_migrations WHERE version = 2').get();
+  if (!v2) {
+    try {
+      db.prepare('ALTER TABLE transport_requests ADD COLUMN delivery_otp TEXT DEFAULT NULL').run();
+    } catch {}
+    try {
+      db.prepare('ALTER TABLE transport_requests ADD COLUMN proof_of_delivery TEXT DEFAULT NULL').run();
+    } catch {}
+    try {
+      db.prepare('ALTER TABLE trips ADD COLUMN delivery_otp TEXT DEFAULT NULL').run();
+    } catch {}
+    try {
+      db.prepare('ALTER TABLE trips ADD COLUMN proof_of_delivery TEXT DEFAULT NULL').run();
+    } catch {}
+    db.prepare('INSERT INTO schema_migrations (version) VALUES (2)').run();
   }
 }
 
@@ -406,13 +490,18 @@ const transportOps = {
       const tripId = getNextId('trips', 'T');
       const fuelEst = Math.round(distanceKm * 0.22 * 10) / 10;
       const etaHours = Math.round((distanceKm / 48) * 10) / 10;
+      const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
 
       try {
         getDb().prepare(`
+          UPDATE transport_requests SET delivery_otp = ? WHERE id = ?
+        `).run(deliveryOtp, requestId);
+
+        getDb().prepare(`
           INSERT INTO trips (id, request, driver, vehicle, pickup, destination, cargo, status,
-            distance_km, fuel_estimate, eta_hours, earnings, started_at)
+            distance_km, fuel_estimate, eta_hours, earnings, delivery_otp, started_at)
           VALUES (@id, @request, @driver, @vehicle, @pickup, @destination, @cargo, 'scheduled',
-            @distance_km, @fuel_estimate, @eta_hours, @earnings, @started_at)
+            @distance_km, @fuel_estimate, @eta_hours, @earnings, @delivery_otp, @started_at)
         `).run({
           id: tripId,
           request: requestId,
@@ -425,6 +514,7 @@ const transportOps = {
           fuel_estimate: fuelEst,
           eta_hours: etaHours,
           earnings: earnings,
+          delivery_otp: deliveryOtp,
           started_at: new Date().toISOString()
         });
       } catch (err) {
@@ -514,6 +604,219 @@ const tripOps = {
       }
       return after;
     })();
+  },
+  completeWithOtp(tripId, enteredOtp, proofOfDelivery = '') {
+    return getDb().transaction(() => {
+      const trip = this.findById(tripId);
+      if (!trip) throw Object.assign(new Error('Trip not found'), { status: 404 });
+      const req = transportOps.findById(trip.request);
+
+      const expectedOtp = trip.delivery_otp || req?.delivery_otp;
+      if (expectedOtp && String(enteredOtp || '').trim() !== String(expectedOtp).trim()) {
+        throw Object.assign(
+          new Error('Invalid Delivery OTP. Please request the 4-digit verification code from the receiving farmer.'),
+          { status: 400 }
+        );
+      }
+
+      getDb().prepare(`
+        UPDATE trips SET status = 'completed', completed_at = ?, proof_of_delivery = ? WHERE id = ?
+      `).run(new Date().toISOString(), proofOfDelivery || '', tripId);
+
+      getDb().prepare("UPDATE vehicles SET status = 'available' WHERE id = ?").run(trip.vehicle);
+      getDb().prepare(`
+        UPDATE transport_requests SET status = 'delivered', delivered_at = ?, proof_of_delivery = ? WHERE id = ?
+      `).run(new Date().toISOString(), proofOfDelivery || '', trip.request);
+
+      userOps.incrementTrips(trip.driver);
+      return this.findById(tripId);
+    })();
+  }
+};
+
+// --- FARMS & PLOTS (KrishiDrive 3.0) ---------------------------------------
+const farmOps = {
+  listAll() {
+    return getDb().prepare('SELECT * FROM farms ORDER BY created_at DESC').all()
+      .map(f => ({ ...f, boundary_geojson: parseJson(f.boundary_geojson, []) }));
+  },
+  listByFarmer(farmer) {
+    return getDb().prepare('SELECT * FROM farms WHERE farmer = ? ORDER BY created_at DESC').all(farmer)
+      .map(f => ({ ...f, boundary_geojson: parseJson(f.boundary_geojson, []) }));
+  },
+  findById(id) {
+    const f = getDb().prepare('SELECT * FROM farms WHERE id = ?').get(id);
+    return f ? { ...f, boundary_geojson: parseJson(f.boundary_geojson, []) } : null;
+  },
+  create(farm) {
+    const id = getNextId('farms', 'F');
+    const boundary = typeof farm.boundary_geojson === 'string'
+      ? farm.boundary_geojson
+      : JSON.stringify(farm.boundary_geojson || []);
+    getDb().prepare(`
+      INSERT INTO farms (
+        id, farmer, name, village, district, state, latitude, longitude,
+        boundary_geojson, area_acres, area_hectares, soil_type, soil_ph,
+        nitrogen, phosphorus, potassium, organic_carbon_percent, is_lab_tested,
+        irrigation_type, created_at, updated_at
+      ) VALUES (
+        @id, @farmer, @name, @village, @district, @state, @latitude, @longitude,
+        @boundary_geojson, @area_acres, @area_hectares, @soil_type, @soil_ph,
+        @nitrogen, @phosphorus, @potassium, @organic_carbon_percent, @is_lab_tested,
+        @irrigation_type, @created_at, @updated_at
+      )
+    `).run({
+      id,
+      farmer: farm.farmer,
+      name: farm.name || 'My Farm Plot',
+      village: farm.village || '',
+      district: farm.district || '',
+      state: farm.state || 'Maharashtra',
+      latitude: Number(farm.latitude) || 0,
+      longitude: Number(farm.longitude) || 0,
+      boundary_geojson: boundary,
+      area_acres: Number(farm.area_acres) || 1,
+      area_hectares: Number(farm.area_hectares) || 0.4,
+      soil_type: farm.soil_type || 'Loamy',
+      soil_ph: Number(farm.soil_ph) || 6.5,
+      nitrogen: Number(farm.nitrogen) || 120,
+      phosphorus: Number(farm.phosphorus) || 50,
+      potassium: Number(farm.potassium) || 40,
+      organic_carbon_percent: Number(farm.organic_carbon_percent) || 0.5,
+      is_lab_tested: farm.is_lab_tested ? 1 : 0,
+      irrigation_type: farm.irrigation_type || 'Borewell',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+    return this.findById(id);
+  },
+  update(id, fields) {
+    const allowed = [
+      'name', 'village', 'district', 'state', 'latitude', 'longitude',
+      'boundary_geojson', 'area_acres', 'area_hectares', 'soil_type', 'soil_ph',
+      'nitrogen', 'phosphorus', 'potassium', 'organic_carbon_percent', 'is_lab_tested',
+      'irrigation_type'
+    ];
+    const updates = [];
+    const values = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (!allowed.includes(k) || v === undefined) continue;
+      updates.push(`${k} = @${k}`);
+      if (k === 'boundary_geojson') {
+        values[k] = typeof v === 'string' ? v : JSON.stringify(v || []);
+      } else if (k === 'is_lab_tested') {
+        values[k] = v ? 1 : 0;
+      } else {
+        values[k] = v;
+      }
+    }
+    if (!updates.length) return this.findById(id);
+    updates.push("updated_at = datetime('now')");
+    values.id = id;
+    getDb().prepare(`UPDATE farms SET ${updates.join(', ')} WHERE id = @id`).run(values);
+    return this.findById(id);
+  },
+  delete(id) {
+    const farm = this.findById(id);
+    if (!farm) return null;
+    getDb().prepare('DELETE FROM farms WHERE id = ?').run(id);
+    return farm;
+  }
+};
+
+// --- SATELLITE ANALYSES (KrishiDrive 3.0) -----------------------------------
+const satelliteOps = {
+  listByFarm(farmId) {
+    return getDb().prepare('SELECT * FROM satellite_analyses WHERE farm_id = ? ORDER BY created_at DESC').all(farmId)
+      .map(r => ({
+        ...r,
+        environmental_summary: parseJson(r.environmental_summary_json, {}),
+        crop_recommendations: parseJson(r.crop_recommendations_json, [])
+      }));
+  },
+  listByFarmer(farmer) {
+    return getDb().prepare('SELECT * FROM satellite_analyses WHERE farmer = ? ORDER BY created_at DESC').all(farmer)
+      .map(r => ({
+        ...r,
+        environmental_summary: parseJson(r.environmental_summary_json, {}),
+        crop_recommendations: parseJson(r.crop_recommendations_json, [])
+      }));
+  },
+  create(data) {
+    const id = getNextId('satellite_analyses', 'SA');
+    getDb().prepare(`
+      INSERT INTO satellite_analyses (
+        id, farm_id, farmer, ndvi, ndwi, evi, soil_moisture_m3_m3,
+        surface_temp_c, elevation_m, slope_deg, environmental_summary_json,
+        crop_recommendations_json, created_at
+      ) VALUES (
+        @id, @farm_id, @farmer, @ndvi, @ndwi, @evi, @soil_moisture_m3_m3,
+        @surface_temp_c, @elevation_m, @slope_deg, @environmental_summary_json,
+        @crop_recommendations_json, @created_at
+      )
+    `).run({
+      id,
+      farm_id: data.farm_id,
+      farmer: data.farmer,
+      ndvi: Number(data.ndvi) || 0.5,
+      ndwi: Number(data.ndwi) || 0.2,
+      evi: Number(data.evi) || 0.4,
+      soil_moisture_m3_m3: Number(data.soil_moisture_m3_m3) || 0.25,
+      surface_temp_c: Number(data.surface_temp_c) || 26.5,
+      elevation_m: Number(data.elevation_m) || 500,
+      slope_deg: Number(data.slope_deg) || 2.0,
+      environmental_summary_json: typeof data.environmental_summary === 'string'
+        ? data.environmental_summary
+        : JSON.stringify(data.environmental_summary || {}),
+      crop_recommendations_json: typeof data.crop_recommendations === 'string'
+        ? data.crop_recommendations
+        : JSON.stringify(data.crop_recommendations || []),
+      created_at: new Date().toISOString()
+    });
+    return getDb().prepare('SELECT * FROM satellite_analyses WHERE id = ?').get(id);
+  }
+};
+
+// --- SUPPORT TICKETS & AUDIT (KrishiDrive 3.0) ------------------------------
+const supportOps = {
+  listAll() {
+    return getDb().prepare('SELECT * FROM support_tickets ORDER BY created_at DESC').all();
+  },
+  create(ticket) {
+    const id = getNextId('support_tickets', 'ST');
+    getDb().prepare(`
+      INSERT INTO support_tickets (id, username, category, title, description, status, created_at)
+      VALUES (@id, @username, @category, @title, @description, 'open', @created_at)
+    `).run({
+      id,
+      username: ticket.username,
+      category: ticket.category || 'general',
+      title: ticket.title || 'Support Query',
+      description: ticket.description || '',
+      created_at: new Date().toISOString()
+    });
+    return getDb().prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+  },
+  updateStatus(id, status) {
+    getDb().prepare('UPDATE support_tickets SET status = ? WHERE id = ?').run(status, id);
+    return getDb().prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+  }
+};
+
+const auditOps = {
+  log(action, actor = 'system', details = {}, ip = '') {
+    try {
+      const id = getNextId('audit_logs', 'AL');
+      getDb().prepare(`
+        INSERT INTO audit_logs (id, action, actor, details_json, ip_address, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(id, action, actor, JSON.stringify(details), ip || '');
+    } catch (e) {
+      console.warn('Audit logging error:', e.message);
+    }
+  },
+  listRecent(limit = 100) {
+    return getDb().prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?').all(limit);
   }
 };
 
@@ -523,6 +826,10 @@ module.exports = {
   getDb,
   userOps,
   cropOps,
+  farmOps,
+  satelliteOps,
+  supportOps,
+  auditOps,
   vehicleOps,
   transportOps,
   tripOps,

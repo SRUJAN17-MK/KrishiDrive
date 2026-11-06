@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Sprout, Truck, Brain, Navigation, LogOut,
   Menu, X, Home, Route as RouteIcon, Package, MessageSquare,
   Settings, BarChart3, Globe, Sun, Moon, UserCheck,
-  ShieldCheck, WifiOff, Cpu, Store
+  ShieldCheck, WifiOff, Cpu, Store, Satellite, Server
 } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
@@ -22,6 +22,7 @@ const FarmerTransport = lazy(() => import('./pages/FarmerTransport'))
 const FarmerDeliveries = lazy(() => import('./pages/FarmerDeliveries'))
 const FarmerAssistant = lazy(() => import('./pages/FarmerAssistant'))
 const MarketPrices = lazy(() => import('./pages/MarketPrices'))
+const SatelliteIntelligence = lazy(() => import('./pages/SatelliteIntelligence'))
 const DriverDashboard = lazy(() => import('./pages/DriverDashboard'))
 const DriverJobs = lazy(() => import('./pages/DriverJobs'))
 const DriverRoutes = lazy(() => import('./pages/DriverRoutes'))
@@ -32,12 +33,16 @@ const AILab = lazy(() => import('./pages/AILab'))
 const OnDeviceAI = lazy(() => import('./pages/OnDeviceAI'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
 const AboutPage = lazy(() => import('./pages/AboutPage'))
+const SystemStatus = lazy(() => import('./pages/SystemStatus'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
+const TermsPage = lazy(() => import('./pages/TermsPage'))
 
 const farmerNav = [
   { path: '/farmer', key: 'nav.overview', icon: LayoutDashboard, end: true },
   { path: '/farmer/crops', key: 'nav.crops', icon: Sprout },
   { path: '/farmer/transport', key: 'nav.transport', icon: Truck },
   { path: '/farmer/deliveries', key: 'nav.deliveries', icon: Package },
+  { path: '/farmer/satellite', key: 'nav.satellite', icon: Globe },
   { path: '/farmer/assistant', key: 'nav.farmAssistant', icon: MessageSquare },
   { path: '/market-prices', key: 'nav.market', icon: Store },
   { path: '/ai-lab', key: 'nav.aiLab', icon: Brain }
@@ -63,8 +68,10 @@ const publicNav = [
   { path: '/', key: 'nav.home', icon: Home, end: true },
   { path: '/about', key: 'nav.about', icon: Globe },
   { path: '/market-prices', key: 'nav.market', icon: Store },
+  { path: '/satellite-intelligence', key: 'nav.satellite', icon: Globe },
   { path: '/ai-lab', key: 'nav.aiLab', icon: Brain },
-  { path: '/on-device-ai', key: 'nav.model', icon: Cpu }
+  { path: '/on-device-ai', key: 'nav.model', icon: Cpu },
+  { path: '/system-status', key: 'nav.systemStatus', icon: BarChart3 }
 ]
 
 function RouteFallback() {
@@ -309,16 +316,23 @@ function PublicLayout({ children }) {
             <ul className="space-y-2 text-xs">
               <li><NavLink to="/on-device-ai" className="hover:text-emerald-400 transition">{t('footer.modelCard')}</NavLink></li>
               <li><NavLink to="/on-device-ai#limitations" className="hover:text-emerald-400 transition">{t('footer.limitations')}</NavLink></li>
-              <li><a href="/api/health/detailed" className="hover:text-emerald-400 transition">{t('footer.apiStatus')}</a></li>
+              <li><NavLink to="/system-status" className="hover:text-emerald-400 transition">{t('footer.apiStatus')}</NavLink></li>
               <li><NavLink to="/about" className="hover:text-emerald-400 transition">{t('nav.about')}</NavLink></li>
             </ul>
           </div>
 
           <div>
             <div className="text-white font-semibold text-xs uppercase tracking-wider mb-3">{t('footer.support')}</div>
-            <p className="text-xs text-gray-400 mb-2">Open-source project. Report bugs and data issues on GitHub.</p>
-            <a href="https://github.com/SRUJAN17-MK/KrishiDrive" target="_blank" rel="noreferrer" className="text-sm font-bold text-white hover:text-emerald-400">github.com/SRUJAN17-MK/KrishiDrive</a>
-            <p className="text-[11px] text-gray-500 mt-2">No invented phone numbers or accuracy claims.</p>
+            <ul className="space-y-2 text-xs">
+              <li><NavLink to="/system-status" className="hover:text-emerald-400 transition">{t('nav.systemStatus') || 'System Status'}</NavLink></li>
+              <li><NavLink to="/privacy" className="hover:text-emerald-400 transition">{t('nav.privacy') || 'Privacy Policy'}</NavLink></li>
+              <li><NavLink to="/terms" className="hover:text-emerald-400 transition">{t('nav.terms') || 'Terms of Service'}</NavLink></li>
+              <li>
+                <a href="https://github.com/SRUJAN17-MK/KrishiDrive" target="_blank" rel="noreferrer" className="hover:text-emerald-400 transition">
+                  GitHub Repository
+                </a>
+              </li>
+            </ul>
           </div>
         </div>
 
@@ -391,6 +405,10 @@ export default function App() {
               <Route path="/on-device-ai" element={<PublicLayout><Suspense fallback={<RouteFallback />}><OnDeviceAI /></Suspense></PublicLayout>} />
               <Route path="/model" element={<Navigate to="/on-device-ai" replace />} />
               <Route path="/market-prices" element={<PublicLayout><Suspense fallback={<RouteFallback />}><MarketPrices /></Suspense></PublicLayout>} />
+              <Route path="/satellite-intelligence" element={<PublicLayout><Suspense fallback={<RouteFallback />}><SatelliteIntelligence /></Suspense></PublicLayout>} />
+              <Route path="/system-status" element={<PublicLayout><Suspense fallback={<RouteFallback />}><SystemStatus /></Suspense></PublicLayout>} />
+              <Route path="/privacy" element={<PublicLayout><Suspense fallback={<RouteFallback />}><PrivacyPolicy /></Suspense></PublicLayout>} />
+              <Route path="/terms" element={<PublicLayout><Suspense fallback={<RouteFallback />}><TermsPage /></Suspense></PublicLayout>} />
               <Route path="/login" element={<Suspense fallback={<RouteFallback />}><LoginPage /></Suspense>} />
               <Route path="/register" element={<Suspense fallback={<RouteFallback />}><RegisterPage /></Suspense>} />
 
@@ -403,6 +421,7 @@ export default function App() {
                       <Route path="transport" element={<FarmerTransport />} />
                       <Route path="deliveries" element={<FarmerDeliveries />} />
                       <Route path="assistant" element={<FarmerAssistant />} />
+                      <Route path="satellite" element={<SatelliteIntelligence />} />
                     </Routes>
                   </PortalShell>
                 </ProtectedRoute>

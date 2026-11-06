@@ -6,9 +6,9 @@ const STORAGE_KEY = 'kd_language'
 
 function detectInitial() {
   const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved && translations[saved]) return saved
+  if (saved && LANGUAGES.some((item) => item.code === saved)) return saved
   const browser = (navigator.language || 'en').slice(0, 2).toLowerCase()
-  return translations[browser] ? browser : 'en'
+  return LANGUAGES.some((item) => item.code === browser) ? browser : 'en'
 }
 
 export function LanguageProvider({ children }) {
@@ -17,7 +17,8 @@ export function LanguageProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, language)
     document.documentElement.lang = language
-    document.documentElement.dir = 'ltr'
+    const current = LANGUAGES.find((item) => item.code === language)
+    document.documentElement.dir = current?.rtl ? 'rtl' : 'ltr'
   }, [language])
 
   const value = useMemo(() => {
