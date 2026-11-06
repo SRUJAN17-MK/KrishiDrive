@@ -233,6 +233,35 @@ function initSchema() {
     } catch {}
     db.prepare('INSERT INTO schema_migrations (version) VALUES (2)').run();
   }
+
+  // Migration v3: support ticket conversation threads, escalation & audit indexes
+  const v3 = db.prepare('SELECT 1 FROM schema_migrations WHERE version = 3').get();
+  if (!v3) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS support_ticket_messages (
+        id          TEXT PRIMARY KEY NOT NULL,
+        ticket_id   TEXT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+        author      TEXT NOT NULL,
+        author_role TEXT DEFAULT 'farmer',
+        body        TEXT NOT NULL,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_ticket_messages_ticket ON support_ticket_messages(ticket_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor);
+      CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+    `);
+    try {
+      db.prepare("ALTER TABLE support_tickets ADD COLUMN escalated INTEGER DEFAULT 0").run();
+    } catch {}
+    try {
+      db.prepare("ALTER TABLE support_tickets ADD COLUMN priority TEXT DEFAULT 'normal'").run();
+    } catch {}
+    try {
+      db.prepare('ALTER TABLE support_tickets ADD COLUMN updated_at TEXT DEFAULT NULL').run();
+    } catch {}
+    db.prepare('INSERT INTO schema_migrations (version) VALUES (3)').run();
+  }
 }
 
 /** Atomic per-table ID generation (call inside a transaction). */
@@ -778,15 +807,53 @@ const satelliteOps = {
 };
 
 // --- SUPPORT TICKETS & AUDIT (KrishiDrive 3.0) ------------------------------
+const SUPPORT_TICKET_STATUSES = ['open', 'in_progress', 'resolved'];
+const SENSITIVE_DETAIL_KEY = /(otp|password|token|secret|api[_-]?key)/i;
+
+function redactDetails(value) {
+  if (Array.isArray(value)) return value.map(redactDetails);
+  if (value && typeof value === 'object') {
+    const clean = {};
+    for (const [key, inner] of Object.entries(value)) {
+      clean[key] = SENSITIVE_DETAIL_KEY.test(key) ? '[redacted]' : redactDetails(inner);
+    }
+    return clean;
+  }
+  return value;
+}
+
 const supportOps = {
   listAll() {
-    return getDb().prepare('SELECT * FROM support_tickets ORDER BY created_at DESC').all();
+    return getDb().prepare('SELECT * FROM support_tickets ORDER BY escalated DESC, created_at DESC').all()
+      .map(ticket => this.decorate(ticket));
+  },
+  listByUser(username) {
+    return getDb().prepare('SELECT * FROM support_tickets WHERE username = ? ORDER BY escalated DESC, created_at DESC').all(username)
+      .map(ticket => this.decorate(ticket));
+  },
+  findById(id) {
+    const ticket = getDb().prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+    return ticket ? this.decorate(ticket) : null;
+  },
+  decorate(ticket) {
+    if (!ticket) return null;
+    const { n } = getDb().prepare('SELECT COUNT(*) AS n FROM support_ticket_messages WHERE ticket_id = ?').get(ticket.id);
+    return {
+      ...ticket,
+      escalated: Boolean(ticket.escalated),
+      message_count: n || 0
+    };
+  },
+  listMessages(ticketId) {
+    return getDb().prepare(
+      'SELECT * FROM support_ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC, rowid ASC'
+    ).all(ticketId);
   },
   create(ticket) {
     const id = getNextId('support_tickets', 'ST');
     getDb().prepare(`
-      INSERT INTO support_tickets (id, username, category, title, description, status, created_at)
-      VALUES (@id, @username, @category, @title, @description, 'open', @created_at)
+      INSERT INTO support_tickets (id, username, category, title, description, status, escalated, priority, created_at, updated_at)
+      VALUES (@id, @username, @category, @title, @description, 'open', 0, 'normal', @created_at, @created_at)
     `).run({
       id,
       username: ticket.username,
@@ -795,13 +862,52 @@ const supportOps = {
       description: ticket.description || '',
       created_at: new Date().toISOString()
     });
-    return getDb().prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+    return this.findById(id);
+  },
+  addMessage({ ticket_id, author, author_role = 'farmer', body }) {
+    const txn = getDb().transaction(() => {
+      const id = getNextId('support_ticket_messages', 'TM');
+      getDb().prepare(`
+        INSERT INTO support_ticket_messages (id, ticket_id, author, author_role, body, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(id, ticket_id, author, author_role, body);
+      // The first admin reply lifts an untouched ticket into active handling.
+      getDb().prepare(`
+        UPDATE support_tickets
+        SET updated_at = datetime('now'),
+            status = CASE WHEN status = 'open' AND ? = 'admin' THEN 'in_progress' ELSE status END
+        WHERE id = ?
+      `).run(author_role, ticket_id);
+      return getDb().prepare('SELECT * FROM support_ticket_messages WHERE id = ?').get(id);
+    });
+    return txn();
   },
   updateStatus(id, status) {
-    getDb().prepare('UPDATE support_tickets SET status = ? WHERE id = ?').run(status, id);
-    return getDb().prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+    getDb().prepare("UPDATE support_tickets SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
+    return this.findById(id);
+  },
+  setEscalated(id, escalated) {
+    getDb().prepare(`
+      UPDATE support_tickets
+      SET escalated = ?,
+          status = CASE WHEN ? = 1 AND status = 'open' THEN 'in_progress' ELSE status END,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(escalated ? 1 : 0, escalated ? 1 : 0, id);
+    return this.findById(id);
   }
 };
+
+const AUDIT_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function auditBoundary(value, endOfDay) {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = String(value).trim();
+  if (AUDIT_DATE_ONLY.test(raw)) return `${raw} ${endOfDay ? '23:59:59' : '00:00:00'}`;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 19).replace('T', ' ');
+}
 
 const auditOps = {
   log(action, actor = 'system', details = {}, ip = '') {
@@ -815,8 +921,50 @@ const auditOps = {
       console.warn('Audit logging error:', e.message);
     }
   },
+  list({ limit = 50, offset = 0, actor, action, from, to, q } = {}) {
+    const clauses = [];
+    const params = {};
+    if (actor) {
+      clauses.push('actor = @actor');
+      params.actor = actor;
+    }
+    if (action) {
+      clauses.push('action = @action');
+      params.action = action;
+    }
+    const fromBound = auditBoundary(from, false);
+    if (fromBound) {
+      clauses.push('created_at >= @from');
+      params.from = fromBound;
+    }
+    const toBound = auditBoundary(to, true);
+    if (toBound) {
+      clauses.push('created_at <= @to');
+      params.to = toBound;
+    }
+    if (q) {
+      clauses.push('(actor LIKE @q OR action LIKE @q OR details_json LIKE @q OR ip_address LIKE @q)');
+      params.q = `%${q}%`;
+    }
+    params.limit = limit;
+    params.offset = offset;
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    return getDb()
+      .prepare(`SELECT * FROM audit_logs ${where} ORDER BY created_at DESC, rowid DESC LIMIT @limit OFFSET @offset`)
+      .all(params)
+      .map(row => ({
+        ...row,
+        details: redactDetails(parseJson(row.details_json, {}))
+      }));
+  },
   listRecent(limit = 100) {
-    return getDb().prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?').all(limit);
+    return this.list({ limit });
+  },
+  filterOptions() {
+    return {
+      actions: getDb().prepare('SELECT action, COUNT(*) AS count FROM audit_logs GROUP BY action ORDER BY count DESC, action ASC').all(),
+      actors: getDb().prepare('SELECT actor, COUNT(*) AS count FROM audit_logs GROUP BY actor ORDER BY actor ASC').all()
+    };
   }
 };
 
@@ -833,5 +981,6 @@ module.exports = {
   vehicleOps,
   transportOps,
   tripOps,
-  getNextId
+  getNextId,
+  SUPPORT_TICKET_STATUSES
 };

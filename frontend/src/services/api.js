@@ -34,6 +34,15 @@ function jsonHeaders() {
   return headers
 }
 
+function query(params = {}) {
+  const search = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') search.set(key, value)
+  })
+  const serialized = search.toString()
+  return serialized ? `?${serialized}` : ''
+}
+
 function errorMessage(status, data) {
   if (status === 401) return 'Session expired. Please sign in again.'
   if (status === 403) return data?.detail || 'You do not have permission for this action.'
@@ -153,10 +162,20 @@ export const api = {
   notifications: {
     list: () => api.get('/notifications')
   },
+  support: {
+    list: () => api.get('/support/tickets'),
+    get: (id) => api.get(`/support/tickets/${id}`),
+    create: (d) => api.post('/support/tickets', d),
+    reply: (id, body) => api.post(`/support/tickets/${id}/messages`, { body }),
+    setStatus: (id, status) => api.put(`/support/tickets/${id}/status`, { status }),
+    escalate: (id, escalated = true) => api.post(`/support/tickets/${id}/escalate`, { escalated })
+  },
   admin: {
     stats: () => api.get('/admin/stats'),
     users: () => api.get('/admin/users'),
-    verifyDriver: (username, verified) => api.post(`/admin/drivers/${username}/verify`, { verified })
+    verifyDriver: (username, verified) => api.post(`/admin/drivers/${username}/verify`, { verified }),
+    auditLogs: (params = {}) => api.get(`/admin/audit-logs${query(params)}`),
+    auditFilters: () => api.get('/admin/audit-logs/filters')
   }
 }
 

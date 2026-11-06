@@ -33,34 +33,40 @@ function LatencyBadge({ ms }) {
 }
 
 const SERVICE_META = {
-  openMeteo: {
-    label: 'Open-Meteo Weather API',
-    icon: Cloud,
-    description: 'Real-time weather, hourly forecasts, and Copernicus land-surface soil moisture reanalysis. No API key required.',
-    link: 'https://open-meteo.com'
-  },
-  osrm: {
-    label: 'OSRM Route Engine',
-    icon: Globe,
-    description: 'Real road-distance routing for transport booking cost estimates and "Where to Sell" mandi comparisons.',
-    link: 'https://project-osrm.org'
-  },
-  agmarknet: {
-    label: 'Agmarknet (data.gov.in)',
-    icon: Server,
-    description: 'Official Indian government APMC mandi wholesale price data. Requires AGMARKNET_API_KEY in backend .env.',
-    link: 'https://agmarknet.gov.in'
-  },
-  sqlite: {
-    label: 'SQLite Database (WAL mode)',
+  database: {
+    label: 'SQLite 3 Database (WAL mode, ACID)',
     icon: Database,
-    description: 'On-device SQLite database with WAL journal mode, foreign keys, and transactions. Stores all app data locally.',
+    description: 'On-device relational SQLite database with WAL journal mode, strict foreign keys, and transactions.',
     link: null
   },
-  onnx: {
-    label: 'ONNX Runtime (Crop Disease AI)',
+  satellite_intelligence: {
+    label: 'Copernicus Sentinel-2 & ECMWF Land Surface',
+    icon: Globe,
+    description: 'Daily global satellite reanalysis: 0-9cm root zone moisture, soil temp, DEM elevation & slope via Open-Meteo.',
+    link: 'https://open-meteo.com/en/docs/elevation-api'
+  },
+  weather_service: {
+    label: 'Open-Meteo Weather API',
+    icon: Cloud,
+    description: 'Real-time weather, hourly precipitation, temperature, and agricultural moisture conditions. No API key required.',
+    link: 'https://open-meteo.com'
+  },
+  routing_service: {
+    label: 'OSRM Route Engine (OpenStreetMap)',
+    icon: Globe,
+    description: 'Real road distance & travel duration routing for transport bookings and Where to Sell net profit calculation.',
+    link: 'https://project-osrm.org'
+  },
+  mandi_prices: {
+    label: 'Agmarknet APMC Mandi Prices (data.gov.in)',
+    icon: Server,
+    description: 'Official Ministry of Agriculture APMC wholesale prices. Verified baseline reference when AGMARKNET_API_KEY is not set.',
+    link: 'https://data.gov.in'
+  },
+  ai_onnx_inference: {
+    label: 'ONNX Runtime (PlantVillage MobileNetV2)',
     icon: Cpu,
-    description: 'On-device MobileNetV2 model trained on PlantVillage (38 classes). Inference runs on CPU — NPU not verified for this build.',
+    description: 'Inference model for 38 crop disease classes. Measured CPU latency ~3.3 ms. Snapdragon NPU unverified for this build.',
     link: null
   }
 }
@@ -91,7 +97,7 @@ export default function SystemStatus() {
     fetchStatus()
   }, [])
 
-  const services = status?.services || {}
+  const services = status?.subsystems || status?.services || {}
   const allUp = Object.values(services).every(s => s?.status === 'ok' || s?.status === 'connected')
   const anyDown = Object.values(services).some(s => s?.status === 'error' || s?.status === 'down')
 

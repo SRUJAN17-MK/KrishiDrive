@@ -39,7 +39,8 @@ const multer     = require('multer');
 const { body, validationResult } = require('express-validator');
 
 const {
-  getDb, userOps, cropOps, farmOps, satelliteOps, supportOps, auditOps, vehicleOps, transportOps, tripOps
+  getDb, userOps, cropOps, farmOps, satelliteOps, supportOps, auditOps, vehicleOps, transportOps, tripOps,
+  SUPPORT_TICKET_STATUSES
 } = require('./db');
 const { migrateFromJson } = require('./migrate');
 const disease = require('./ai/diseaseClassifier');
@@ -1286,7 +1287,7 @@ app.post('/api/transport/complete-delivery', authMiddleware, requireRole('driver
       return res.status(403).json({ detail: 'Unauthorized: Not your assigned trip' });
     }
     const completed = tripOps.completeWithOtp(trip_id, delivery_otp, proof_of_delivery);
-    auditOps.log('complete_delivery', req.user.username, { trip_id, delivery_otp }, req.ip);
+    auditOps.log('complete_delivery', req.user.username, { trip_id }, req.ip);
     res.json({ message: 'Delivery completed successfully with OTP verification', trip: completed });
   } catch (err) {
     res.status(err.status || 500).json({ detail: err.message });
@@ -1295,16 +1296,27 @@ app.post('/api/transport/complete-delivery', authMiddleware, requireRole('driver
 
 // ─── SUPPORT TICKETS & AUDIT (KrishiDrive 3.0) ────────────────────────────────
 app.get('/api/support/tickets', authMiddleware, (req, res) => {
-  if (req.user.role === 'admin') {
-    return res.json(supportOps.listAll());
+  const tickets = req.user.role === 'admin'
+    ? supportOps.listAll()
+    : supportOps.listByUser(req.user.username);
+  res.json(tickets);
+});
+
+app.get('/api/support/tickets/:id', authMiddleware, (req, res) => {
+  const ticket = supportOps.findById(req.params.id);
+  if (!ticket) return res.status(404).json({ detail: 'Support ticket not found' });
+  if (req.user.role !== 'admin' && ticket.username !== req.user.username) {
+    return res.status(403).json({ detail: 'Forbidden: this ticket belongs to another account' });
   }
-  const all = supportOps.listAll();
-  res.json(all.filter(t => t.username === req.user.username));
+  res.json({ ...ticket, messages: supportOps.listMessages(ticket.id) });
 });
 
 app.post('/api/support/tickets', authMiddleware, [
-  body('title').trim().notEmpty().withMessage('Title required'),
+  body('title').trim().notEmpty().withMessage('Title required')
+    .isLength({ max: 160 }).withMessage('Title is too long (max 160 characters)'),
   body('description').trim().notEmpty().withMessage('Description required')
+    .isLength({ max: 4000 }).withMessage('Description is too long (max 4000 characters)'),
+  body('category').optional().trim().isLength({ max: 40 }).withMessage('Invalid category')
 ], (req, res) => {
   if (checkValidation(req, res)) return;
   const ticket = supportOps.create({
@@ -1317,9 +1329,70 @@ app.post('/api/support/tickets', authMiddleware, [
   res.status(201).json(ticket);
 });
 
+// Admin/owner conversation thread. An admin reply moves an open ticket to in_progress.
+app.post('/api/support/tickets/:id/messages', authMiddleware, [
+  body('body').trim().notEmpty().withMessage('Reply body required')
+    .isLength({ max: 2000 }).withMessage('Reply is too long (max 2000 characters)')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const ticket = supportOps.findById(req.params.id);
+  if (!ticket) return res.status(404).json({ detail: 'Support ticket not found' });
+  const isAdmin = req.user.role === 'admin';
+  if (!isAdmin && ticket.username !== req.user.username) {
+    return res.status(403).json({ detail: 'Forbidden: this ticket belongs to another account' });
+  }
+  if (!isAdmin && ticket.status === 'resolved') {
+    return res.status(409).json({ detail: 'This ticket is resolved. Ask support to reopen it before replying.' });
+  }
+  const message = supportOps.addMessage({
+    ticket_id: ticket.id,
+    author: req.user.username,
+    author_role: isAdmin ? 'admin' : 'user',
+    body: req.body.body
+  });
+  auditOps.log('ticket_reply', req.user.username, { ticket_id: ticket.id, message_id: message.id }, req.ip);
+  const updated = supportOps.findById(ticket.id);
+  res.status(201).json({ message, ticket: { ...updated, messages: supportOps.listMessages(ticket.id) } });
+});
+
+app.put('/api/support/tickets/:id/status', authMiddleware, requireRole('admin'), [
+  body('status').isIn(SUPPORT_TICKET_STATUSES)
+    .withMessage(`Status must be one of: ${SUPPORT_TICKET_STATUSES.join(', ')}`)
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const existing = supportOps.findById(req.params.id);
+  if (!existing) return res.status(404).json({ detail: 'Support ticket not found' });
+  const ticket = supportOps.updateStatus(existing.id, req.body.status);
+  auditOps.log('ticket_status', req.user.username, {
+    ticket_id: ticket.id, from: existing.status, to: ticket.status
+  }, req.ip);
+  res.json({ ticket: { ...ticket, messages: supportOps.listMessages(ticket.id) } });
+});
+
+app.post('/api/support/tickets/:id/escalate', authMiddleware, requireRole('admin'), (req, res) => {
+  const existing = supportOps.findById(req.params.id);
+  if (!existing) return res.status(404).json({ detail: 'Support ticket not found' });
+  const escalated = req.body?.escalated === undefined ? true : Boolean(req.body.escalated);
+  const ticket = supportOps.setEscalated(existing.id, escalated);
+  auditOps.log(escalated ? 'escalate_ticket' : 'deescalate_ticket', req.user.username, {
+    ticket_id: ticket.id
+  }, req.ip);
+  res.json({ ticket: { ...ticket, messages: supportOps.listMessages(ticket.id) } });
+});
+
 app.get('/api/admin/audit-logs', authMiddleware, requireRole('admin'), (req, res) => {
   const limit = Math.max(10, Math.min(200, parseInt(req.query.limit, 10) || 50));
-  res.json(auditOps.listRecent(limit));
+  const offset = Math.max(0, Math.min(5000, parseInt(req.query.offset, 10) || 0));
+  const actor = String(req.query.actor || '').trim().slice(0, 80);
+  const action = String(req.query.action || '').trim().slice(0, 80);
+  const q = String(req.query.q || '').trim().slice(0, 120);
+  const from = String(req.query.from || '').trim();
+  const to = String(req.query.to || '').trim();
+  res.json(auditOps.list({ limit, offset, actor, action, from, to, q }));
+});
+
+app.get('/api/admin/audit-logs/filters', authMiddleware, requireRole('admin'), (req, res) => {
+  res.json(auditOps.filterOptions());
 });
 
 // ─── LIVE SYSTEM & INTEGRATION STATUS PROBE (KrishiDrive 3.0) ────────────────

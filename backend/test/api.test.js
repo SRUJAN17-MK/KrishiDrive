@@ -563,6 +563,179 @@ test('live integrations report real state', async (t) => {
   });
 });
 
+test('support ticket lifecycle is owner-scoped and admin-governed', async (t) => {
+  const farmer = await tokenFor('farmer1');
+  const otherFarmer = await tokenFor('farmer2');
+  const driver = await tokenFor('driver1');
+  const admin = await tokenFor('admin');
+  let ticketId;
+
+  await t.test('farmer opens a ticket', async () => {
+    const res = await request('POST', '/api/support/tickets', {
+      token: farmer,
+      body: {
+        title: 'Canal water not reaching the plot',
+        description: 'The distribution channel has been dry for three days.',
+        category: 'irrigation',
+      },
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.status, 'open');
+    assert.equal(res.data.escalated, false);
+    assert.equal(res.data.message_count, 0);
+    assert.ok(res.data.id);
+    ticketId = res.data.id;
+  });
+
+  await t.test('validates required fields and rejects unknown statuses', async () => {
+    const missing = await request('POST', '/api/support/tickets', {
+      token: farmer,
+      body: { title: '   ' },
+    });
+    assert.equal(missing.status, 400);
+
+    const badStatus = await request('PUT', `/api/support/tickets/${ticketId}/status`, {
+      token: admin,
+      body: { status: 'escalated' },
+    });
+    assert.equal(badStatus.status, 400, 'escalation is a flag, not a status enum value');
+  });
+
+  await t.test('owner sees the ticket and another farmer is denied', async () => {
+    const mine = await request('GET', `/api/support/tickets/${ticketId}`, { token: farmer });
+    assert.equal(mine.status, 200);
+    assert.deepEqual(mine.data.messages, []);
+
+    const other = await request('GET', `/api/support/tickets/${ticketId}`, { token: otherFarmer });
+    assert.equal(other.status, 403);
+  });
+
+  await t.test('admin reply moves an open ticket to in_progress', async () => {
+    const reply = await request('POST', `/api/support/tickets/${ticketId}/messages`, {
+      token: admin,
+      body: { body: 'An extension officer will visit the plot tomorrow morning.' },
+    });
+    assert.equal(reply.status, 201);
+    assert.equal(reply.data.ticket.status, 'in_progress');
+    assert.equal(reply.data.ticket.messages.length, 1);
+    assert.equal(reply.data.ticket.messages[0].author_role, 'admin');
+
+    const ownerView = await request('GET', `/api/support/tickets/${ticketId}`, { token: farmer });
+    assert.equal(ownerView.data.messages.length, 1);
+  });
+
+  await t.test('driver cannot read, reply to, or govern a farmer ticket', async () => {
+    const reply = await request('POST', `/api/support/tickets/${ticketId}/messages`, {
+      token: driver,
+      body: { body: 'Wrong account' },
+    });
+    assert.equal(reply.status, 403);
+
+    const status = await request('PUT', `/api/support/tickets/${ticketId}/status`, {
+      token: driver,
+      body: { status: 'resolved' },
+    });
+    assert.equal(status.status, 403);
+
+    const escalate = await request('POST', `/api/support/tickets/${ticketId}/escalate`, {
+      token: driver,
+      body: {},
+    });
+    assert.equal(escalate.status, 403);
+  });
+
+  await t.test('admin escalates, resolves and reopens the ticket', async () => {
+    const escalated = await request('POST', `/api/support/tickets/${ticketId}/escalate`, {
+      token: admin,
+      body: { escalated: true },
+    });
+    assert.equal(escalated.status, 200);
+    assert.equal(escalated.data.ticket.escalated, true);
+
+    const resolved = await request('PUT', `/api/support/tickets/${ticketId}/status`, {
+      token: admin,
+      body: { status: 'resolved' },
+    });
+    assert.equal(resolved.status, 200);
+    assert.equal(resolved.data.ticket.status, 'resolved');
+
+    const reopened = await request('PUT', `/api/support/tickets/${ticketId}/status`, {
+      token: admin,
+      body: { status: 'open' },
+    });
+    assert.equal(reopened.status, 200);
+    assert.equal(reopened.data.ticket.status, 'open');
+  });
+
+  await t.test('farmer cannot reply to a resolved ticket', async () => {
+    await request('PUT', `/api/support/tickets/${ticketId}/status`, {
+      token: admin,
+      body: { status: 'resolved' },
+    });
+    const res = await request('POST', `/api/support/tickets/${ticketId}/messages`, {
+      token: farmer,
+      body: { body: 'Thank you' },
+    });
+    assert.equal(res.status, 409);
+  });
+
+  await t.test('ticket list is scoped by role', async () => {
+    const adminList = await request('GET', '/api/support/tickets', { token: admin });
+    assert.equal(adminList.status, 200);
+    assert.ok(adminList.data.some((ticket) => ticket.id === ticketId));
+
+    const otherList = await request('GET', '/api/support/tickets', { token: otherFarmer });
+    assert.equal(otherList.status, 200);
+    assert.equal(otherList.data.some((ticket) => ticket.id === ticketId), false);
+  });
+});
+
+test('admin audit trail is filterable, structured and redacted', async (t) => {
+  const admin = await tokenFor('admin');
+  const farmer = await tokenFor('farmer1');
+
+  await t.test('records farm creation and filters by actor, action and date', async () => {
+    const name = `Audit Plot ${Date.now()}`;
+    const created = await request('POST', '/api/farms', {
+      token: farmer,
+      body: { name, latitude: 19.9975, longitude: 73.7898, area_acres: 2 },
+    });
+    assert.equal(created.status, 201);
+
+    const byActor = await request('GET', '/api/admin/audit-logs?actor=farmer1&action=create_farm&limit=200', { token: admin });
+    assert.equal(byActor.status, 200);
+    assert.ok(byActor.data.some((log) => log.details?.farm_id === created.data.id));
+    assert.ok(byActor.data.every((log) => log.actor === 'farmer1' && log.action === 'create_farm'));
+    assert.equal(typeof byActor.data[0].details, 'object', 'details_json should be parsed for the UI');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const byDate = await request('GET', `/api/admin/audit-logs?from=${today}&to=${today}&q=${encodeURIComponent(name)}&limit=200`, { token: admin });
+    assert.equal(byDate.status, 200);
+    assert.ok(byDate.data.length >= 1, 'same-day filter should include the new farm event');
+
+    const filters = await request('GET', '/api/admin/audit-logs/filters', { token: admin });
+    assert.equal(filters.status, 200);
+    assert.ok(filters.data.actions.some((item) => item.action === 'create_farm'));
+    assert.ok(filters.data.actors.some((item) => item.actor === 'farmer1'));
+  });
+
+  await t.test('admin-only access is enforced', async () => {
+    const driver = await tokenFor('driver1');
+    assert.equal((await request('GET', '/api/admin/audit-logs', { token: farmer })).status, 403);
+    assert.equal((await request('GET', '/api/admin/audit-logs/filters', { token: driver })).status, 403);
+    assert.equal((await request('GET', '/api/admin/audit-logs')).status, 401);
+  });
+
+  await t.test('never leaks OTPs, tokens or API keys in audit details', async () => {
+    const logs = await request('GET', '/api/admin/audit-logs?limit=200', { token: admin });
+    assert.equal(logs.status, 200);
+    const payload = JSON.stringify(logs.data);
+    assert.equal(payload.includes('delivery_otp'), false);
+    assert.equal(payload.includes('"password"'), false);
+    assert.equal(payload.includes('"token"'), false);
+  });
+});
+
 test('unknown API routes return JSON 404', async () => {
   const res = await request('GET', '/api/does-not-exist');
   assert.equal(res.status, 404);

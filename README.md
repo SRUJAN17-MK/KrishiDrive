@@ -144,6 +144,20 @@ node scripts/benchmark-disease-model.js
 | `GET` | `/api/admin/users` | Admin | User audit directory |
 | `POST` | `/api/admin/drivers/:u/verify` | Admin | Verify driver KYC credentials |
 
+### Support & Audit (Admin Portal)
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/support/tickets` | User | List own tickets (admins see every ticket) |
+| `POST` | `/api/support/tickets` | User | Open a support ticket |
+| `GET` | `/api/support/tickets/:id` | Owner/Admin | Ticket detail with its reply thread |
+| `POST` | `/api/support/tickets/:id/messages` | Owner/Admin | Reply to a ticket; an admin reply moves `open` → `in_progress` |
+| `PUT` | `/api/support/tickets/:id/status` | Admin | Set status to `open`, `in_progress` or `resolved` |
+| `POST` | `/api/support/tickets/:id/escalate` | Admin | Flag or clear escalation on a ticket |
+| `GET` | `/api/admin/audit-logs` | Admin | Filterable audit trail (`actor`, `action`, `from`, `to`, `q`, `limit`, `offset`) |
+| `GET` | `/api/admin/audit-logs/filters` | Admin | Distinct actors and actions for filter menus |
+
+Audit responses parse `details_json` into an object and redact OTPs, passwords, tokens and API keys before returning them to the browser.
+
 ### Crops & Field Management
 | Method | Route | Access | Description |
 | :--- | :--- | :--- | :--- |
