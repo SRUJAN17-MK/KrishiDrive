@@ -109,14 +109,28 @@ async function getPrices({ commodity, state, district, market, limit = 50, offse
     return { ...cached.value, cached: true };
   }
 
+  if (!isConfigured()) {
+    return {
+      available: false,
+      configured: false,
+      source: 'Agmarknet via data.gov.in',
+      reason: 'AGMARKNET_API_KEY is not configured in backend/.env. Obtain a free key at data.gov.in.',
+      setup_url: 'https://www.data.gov.in/my-account/api-keys',
+      fetched_at: new Date().toISOString(),
+      count: 0,
+      total: 0,
+      records: [],
+      note: 'Live mandi prices require AGMARKNET_API_KEY. Set it in backend/.env to access real-time APMC arrivals across India.'
+    };
+  }
+
   // 1. If API key is configured, query official data.gov.in resource
-  if (isConfigured()) {
-    const params = new URLSearchParams({
-      'api-key': API_KEY,
-      format: 'json',
-      limit: String(lim),
-      offset: String(off)
-    });
+  const params = new URLSearchParams({
+    'api-key': API_KEY,
+    format: 'json',
+    limit: String(lim),
+    offset: String(off)
+  });
     if (commodity) params.set('filters[commodity]', commodity);
     if (state) params.set('filters[state]', state);
     if (district) params.set('filters[district]', district);
@@ -148,58 +162,18 @@ async function getPrices({ commodity, state, district, market, limit = 50, offse
         return { ...value, cached: false };
       }
     } catch (err) {
-      console.warn('data.gov.in query failed, using official APMC baseline:', err.message);
+      console.warn('data.gov.in query failed:', err.message);
     } finally {
       clearTimeout(timer);
     }
-  }
 
-  // 2. Verified baseline dataset (covers major APMC mandis across India)
-  let filtered = BASELINE_MANDI_RECORDS.map(normaliseRecord);
-
-  if (commodity) {
-    const cNorm = commodity.toLowerCase();
-    filtered = filtered.filter(r => r.commodity.toLowerCase().includes(cNorm) || cNorm.includes(r.commodity.toLowerCase()));
-  }
-  if (state) {
-    const sNorm = state.toLowerCase();
-    filtered = filtered.filter(r => r.state.toLowerCase().includes(sNorm));
-  }
-  if (district) {
-    const dNorm = district.toLowerCase();
-    filtered = filtered.filter(r => r.district.toLowerCase().includes(dNorm));
-  }
-  if (market) {
-    const mNorm = market.toLowerCase();
-    filtered = filtered.filter(r => r.market.toLowerCase().includes(mNorm));
-  }
-
-  const paged = filtered.slice(off, off + lim);
-
-  const value = {
-    available: true,
-    configured: isConfigured(),
-    source: isConfigured()
-      ? 'Agmarknet APMC Baseline (data.gov.in fallback)'
-      : 'Agmarknet APMC Reference Baseline (data.gov.in)',
-    dataset: `https://api.data.gov.in/resource/${RESOURCE_ID}`,
-    fetched_at: new Date().toISOString(),
-    last_updated: paged[0]?.arrival_date || '2026-11-04',
-    count: paged.length,
-    total: filtered.length,
-    offset: off,
-    limit: lim,
-    filters: { commodity: commodity || null, state: state || null, district: district || null, market: market || null },
-    records: paged,
-    setup: !isConfigured() ? {
-      message: 'Viewing official Agmarknet benchmark rates. Set AGMARKNET_API_KEY in backend/.env for real-time daily streaming from data.gov.in.',
-      url: 'https://data.gov.in/'
-    } : null,
-    note: 'Prices represent official APMC market wholesale transactions in INR per quintal (100 kg).'
+  return {
+    available: false,
+    configured: true,
+    source: 'Agmarknet via data.gov.in',
+    reason: 'Upstream data.gov.in API is currently unreachable. Please retry shortly.',
+    records: []
   };
-
-  cache.set(key, { at: Date.now(), value });
-  return { ...value, cached: false };
 }
 
 /**
