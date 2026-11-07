@@ -92,11 +92,20 @@ function ScrollToTop() {
 }
 
 function Sidebar({ items, subtitle }) {
-  const { user, logout } = useAuth()
+  const { user, logout, quickLogin } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const { t } = useLanguage()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const handleRoleSwitch = async (username, path) => {
+    try {
+      await quickLogin(username, 'demo123')
+      navigate(path)
+    } catch {
+      navigate('/login')
+    }
+  }
 
   return (
     <>
@@ -189,6 +198,39 @@ function Sidebar({ items, subtitle }) {
               <LogOut size={16} />
             </button>
           </div>
+
+          <div className="flex items-center justify-between text-[11px] px-1 text-gray-500 dark:text-gray-400">
+            <span>Switch Role:</span>
+            <div className="flex items-center gap-2">
+              {user?.role !== 'farmer' && (
+                <button
+                  type="button"
+                  onClick={() => handleRoleSwitch('farmer1', '/farmer')}
+                  className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                >
+                  Farmer
+                </button>
+              )}
+              {user?.role !== 'driver' && (
+                <button
+                  type="button"
+                  onClick={() => handleRoleSwitch('driver1', '/driver')}
+                  className="font-bold text-amber-600 dark:text-amber-400 hover:underline"
+                >
+                  Driver
+                </button>
+              )}
+              {user?.role !== 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => handleRoleSwitch('admin', '/admin')}
+                  className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  Admin
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="p-3 border-t border-gray-100 dark:border-[#1e362e]">
@@ -275,7 +317,7 @@ function PublicLayout({ children }) {
               </div>
             ) : (
               <div className="flex items-center gap-1.5 sm:gap-2 ml-1">
-                <NavLink to="/login" className="hidden sm:inline-block px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl transition">
+                <NavLink to="/login" className="px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl transition">
                   {t('common.signIn')}
                 </NavLink>
                 <NavLink to="/register" className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-xl shadow-sm transition">
