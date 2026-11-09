@@ -5,6 +5,7 @@ import {
   Info, MapPin, ChevronRight, BarChart3, Activity, Layers
 } from 'lucide-react'
 import FarmMap from '../components/FarmMap'
+import { api } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
 import toast from 'react-hot-toast'
@@ -35,13 +36,11 @@ export default function SatelliteIntelligence() {
   const fetchFarms = async () => {
     setLoadingFarms(true)
     try {
-      const res = await fetch('/api/farms', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        setFarms(data.farms || [])
-        if (data.farms?.length > 0 && !selectedFarm) {
-          setSelectedFarm(data.farms[0])
-        }
+      const data = await api.farms.list()
+      const list = Array.isArray(data) ? data : (data.farms || [])
+      setFarms(list)
+      if (list.length > 0 && !selectedFarm) {
+        setSelectedFarm(list[0])
       }
     } catch {
       toast.error('Failed to load farm plots')
@@ -64,16 +63,14 @@ export default function SatelliteIntelligence() {
 
     const loadHistory = async () => {
       try {
-        const res = await fetch(`/api/satellite/history/${selectedFarm.id}`, { credentials: 'include' })
-        if (res.ok) {
-          const data = await res.json()
-          setHistory(data.history || [])
-          if (data.history && data.history.length > 0) {
-            setAnalysis(data.history[0])
-          } else {
-            // Automatically run initial analysis
-            handleRunAnalysis(selectedFarm)
-          }
+        const data = await api.satellite.history(selectedFarm.id)
+        const list = Array.isArray(data) ? data : (data.history || [])
+        setHistory(list)
+        if (list.length > 0) {
+          setAnalysis(list[0])
+        } else {
+          // Automatically run initial analysis
+          handleRunAnalysis(selectedFarm)
         }
       } catch {
         /* ignore error */
@@ -87,34 +84,24 @@ export default function SatelliteIntelligence() {
     if (!farmToAnalyze) return
     setAnalyzing(true)
     try {
-      const res = await fetch('/api/satellite/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          farmId: farmToAnalyze.id,
-          latitude: farmToAnalyze.latitude,
-          longitude: farmToAnalyze.longitude,
-          boundaryCoordinates: farmToAnalyze.boundary_coordinates
-        })
+      const data = await api.satellite.analyze({
+        farm_id: farmToAnalyze.id,
+        latitude: farmToAnalyze.latitude,
+        longitude: farmToAnalyze.longitude,
+        boundary_geojson: farmToAnalyze.boundary_geojson || farmToAnalyze.boundary_coordinates
       })
 
-      if (res.ok) {
-        const data = await res.json()
+      if (data?.analysis) {
         setAnalysis(data.analysis)
         toast.success(`Telemetry analyzed for ${farmToAnalyze.name}`)
         // Refresh history
-        const histRes = await fetch(`/api/satellite/history/${farmToAnalyze.id}`, { credentials: 'include' })
-        if (histRes.ok) {
-          const histData = await histRes.json()
-          setHistory(histData.history || [])
-        }
+        const histData = await api.satellite.history(farmToAnalyze.id)
+        setHistory(Array.isArray(histData) ? histData : (histData.history || []))
       } else {
-        const err = await res.json()
-        toast.error(err.error || 'Satellite analysis failed')
+        toast.error('Satellite analysis did not return telemetry')
       }
-    } catch {
-      toast.error('Network error during satellite analysis')
+    } catch (err) {
+      toast.error(err.message || 'Network error during satellite analysis')
     } finally {
       setAnalyzing(false)
     }
@@ -134,35 +121,24 @@ export default function SatelliteIntelligence() {
 
     setCreatingFarm(true)
     try {
-      const res = await fetch('/api/farms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: newFarmName,
-          state: newFarmState || 'Maharashtra',
-          district: newFarmDistrict || 'Nashik',
-          latitude: newFarmBoundary.center[0],
-          longitude: newFarmBoundary.center[1],
-          areaAcres: newFarmBoundary.areaAcres,
-          boundaryCoordinates: newFarmBoundary.coordinates
-        })
+      const createdFarm = await api.farms.create({
+        name: newFarmName,
+        state: newFarmState || 'Maharashtra',
+        district: newFarmDistrict || 'Nashik',
+        latitude: newFarmBoundary.center[0],
+        longitude: newFarmBoundary.center[1],
+        area_acres: newFarmBoundary.areaAcres,
+        boundary_geojson: newFarmBoundary.coordinates
       })
 
-      if (res.ok) {
-        const data = await res.json()
-        toast.success('Farm registered successfully!')
-        setShowAddFarmModal(false)
-        setNewFarmName('')
-        setNewFarmBoundary(null)
-        await fetchFarms()
-        setSelectedFarm(data.farm)
-      } else {
-        const err = await res.json()
-        toast.error(err.error || 'Failed to save farm plot')
-      }
-    } catch {
-      toast.error('Network error while saving farm')
+      toast.success('Farm registered successfully!')
+      setShowAddFarmModal(false)
+      setNewFarmName('')
+      setNewFarmBoundary(null)
+      await fetchFarms()
+      setSelectedFarm(createdFarm)
+    } catch (err) {
+      toast.error(err.message || 'Failed to save farm plot')
     } finally {
       setCreatingFarm(false)
     }

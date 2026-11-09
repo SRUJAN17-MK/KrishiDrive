@@ -118,6 +118,17 @@ export const api = {
     update: (id, d) => api.put(`/crops/${id}`, d),
     delete: (id) => api.delete(`/crops/${id}`)
   },
+  farms: {
+    list: () => api.get('/farms'),
+    get: (id) => api.get(`/farms/${id}`),
+    create: (d) => api.post('/farms', d),
+    update: (id, d) => api.put(`/farms/${id}`, d),
+    delete: (id) => api.delete(`/farms/${id}`)
+  },
+  satellite: {
+    analyze: (d) => api.post('/satellite/analyze', d),
+    history: (farmId) => api.get(`/satellite/history/${farmId}`)
+  },
   transport: {
     requests: () => api.get('/transport/requests'),
     create: (d) => api.post('/transport/request', d, { queue: true }),
@@ -151,6 +162,7 @@ export const api = {
   },
   market: {
     status: () => api.get('/market/status'),
+    whereToSell: (d) => api.post('/mandi/where-to-sell', d),
     prices: (params = {}) => {
       const query = new URLSearchParams()
       Object.entries(params).forEach(([key, value]) => {

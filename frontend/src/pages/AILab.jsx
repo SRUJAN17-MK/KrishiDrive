@@ -164,7 +164,13 @@ function DiseaseResult({ result }) {
 function RouteResult({ result }) {
   return (
     <div className="space-y-4">
-      <RouteMap geometry={result.geometry} alternatives={result.alternatives} label={`${result.pickup} to ${result.destination}`} />
+      <RouteMap
+        geometry={result.geometry}
+        alternatives={result.alternatives}
+        pickup={result.pickup}
+        destination={result.destination}
+        label={`${result.pickup} to ${result.destination}`}
+      />
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
         <div className="rounded-xl border border-gray-200 dark:border-[#1e362e] p-3"><p className="text-[10px] text-gray-400 uppercase">Distance</p><p className="text-lg font-extrabold">{result.route.distance_km} km</p></div>
         <div className="rounded-xl border border-gray-200 dark:border-[#1e362e] p-3"><p className="text-[10px] text-gray-400 uppercase">Time</p><p className="text-lg font-extrabold">{result.route.estimated_time_hours} h</p></div>

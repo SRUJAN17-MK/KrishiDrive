@@ -32,18 +32,11 @@ function WhereSellTab() {
     setError('')
     setResult(null)
     try {
-      const res = await fetch('/api/mandi/where-to-sell', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          commodity: form.commodity,
-          quantityKg: Number(form.quantityKg),
-          originLocation: form.originLocation
-        })
+      const json = await api.market.whereToSell({
+        commodity: form.commodity,
+        quantity_kg: Number(form.quantityKg),
+        origin_location: form.originLocation
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || json.detail || 'Request failed')
       setResult(json)
     } catch (err) {
       setError(err.message)

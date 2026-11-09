@@ -525,9 +525,9 @@ app.post('/api/farms', authMiddleware, requireRole('farmer', 'admin'), [
     state: req.body.state || req.user.state || 'Maharashtra',
     latitude: req.body.latitude,
     longitude: req.body.longitude,
-    boundary_geojson: req.body.boundary_geojson || [],
-    area_acres: parseFloat(req.body.area_acres) || 1,
-    area_hectares: parseFloat(req.body.area_hectares) || 0.4,
+    boundary_geojson: req.body.boundary_geojson ?? req.body.boundaryCoordinates ?? [],
+    area_acres: parseFloat(req.body.area_acres ?? req.body.areaAcres) || 1,
+    area_hectares: parseFloat(req.body.area_hectares ?? req.body.areaHectares) || 0.4,
     soil_type: req.body.soil_type || 'Loamy',
     soil_ph: parseFloat(req.body.soil_ph) || 6.5,
     nitrogen: parseFloat(req.body.nitrogen) || 120,
@@ -566,9 +566,10 @@ app.delete('/api/farms/:id', authMiddleware, (req, res) => {
 // ─── SATELLITE CROP INTELLIGENCE (KrishiDrive 3.0) ────────────────────────────
 app.post('/api/satellite/analyze', authMiddleware, async (req, res) => {
   try {
+    const targetFarmId = req.body.farm_id ?? req.body.farmId;
     let farm;
-    if (req.body.farm_id) {
-      farm = farmOps.findById(req.body.farm_id);
+    if (targetFarmId) {
+      farm = farmOps.findById(targetFarmId);
       if (!farm) return res.status(404).json({ detail: 'Farm not found' });
     } else {
       // Dynamic farm simulation from submitted coordinates and soil parameters
@@ -1263,7 +1264,9 @@ app.get('/api/market/prices', authMiddleware, mandiHandler);
 
 // ─── WHERE SHOULD I SELL MY CROP? (KrishiDrive 3.0 Market Intelligence) ────────
 app.post('/api/mandi/where-to-sell', authMiddleware, async (req, res) => {
-  const { commodity, quantity_kg, origin_location } = req.body;
+  const commodity = req.body.commodity;
+  const quantity_kg = req.body.quantity_kg ?? req.body.quantityKg;
+  const origin_location = req.body.origin_location ?? req.body.originLocation;
   if (!commodity) return res.status(400).json({ detail: 'Commodity is required' });
   try {
     const analysis = await recommendMandiForSale({
