@@ -2,8 +2,9 @@
  * Road routing with OSRM (real road network) and an explicitly labelled
  * Haversine fallback when OSRM is unavailable.
  *
- * The public OSRM demo server is rate-limited and not suitable for production.
- * Set OSRM_BASE_URL to a self-hosted instance for deployment.
+ * Supports single-destination and multi-stop agricultural dispatch routes.
+ * The public OSRM demo server is rate-limited and suitable for staging/demo.
+ * Set OSRM_BASE_URL to a self-hosted instance for production.
  */
 'use strict';
 
@@ -14,12 +15,11 @@ const OSRM_PROFILE = process.env.OSRM_PROFILE || 'driving';
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const cache = new Map();
 
-function cacheKey(a, b) {
-  return `${a.lat.toFixed(4)},${a.lng.toFixed(4)}->${b.lat.toFixed(4)},${b.lng.toFixed(4)}`;
+function cacheKey(points) {
+  return points.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('->');
 }
 
 function decodePolyline(encoded) {
-  // Not used for GeoJSON responses, kept for providers that return polyline5.
   let index = 0, lat = 0, lng = 0;
   const points = [];
   while (index < encoded.length) {
@@ -34,11 +34,15 @@ function decodePolyline(encoded) {
   return points;
 }
 
-async function fetchOsrm(from, to) {
-  const url = `${OSRM_BASE_URL}/route/v1/${OSRM_PROFILE}/${from.lng},${from.lat};${to.lng},${to.lat}` +
-    '?overview=full&geometries=geojson&alternatives=3&steps=false&annotations=false';
+async function fetchOsrmRoute(points) {
+  const isMultiStop = points.length > 2;
+  const coordPath = points.map((p) => `${p.lng},${p.lat}`).join(';');
+  const alternativesParam = isMultiStop ? 'false' : '3';
+  const url = `${OSRM_BASE_URL}/route/v1/${OSRM_PROFILE}/${coordPath}` +
+    `?overview=full&geometries=geojson&alternatives=${alternativesParam}&steps=false&annotations=false`;
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 7000);
+  const timer = setTimeout(() => controller.abort(), 7500);
   let res;
   try {
     res = await fetch(url, { signal: controller.signal });
@@ -50,35 +54,67 @@ async function fetchOsrm(from, to) {
   if (data.code !== 'Ok' || !Array.isArray(data.routes) || data.routes.length === 0) {
     throw new Error(`OSRM returned ${data.code || 'no routes'}`);
   }
-  return data.routes.map((route, index) => ({
-    id: index,
-    distance_km: Math.round(route.distance / 100) / 10,
-    duration_hours: Math.round((route.duration / 3600) * 100) / 100,
-    duration_minutes: Math.round(route.duration / 60),
-    geometry: (route.geometry && route.geometry.coordinates || []).map(([lng, lat]) => ({
-      lat: Math.round(lat * 1e5) / 1e5,
-      lng: Math.round(lng * 1e5) / 1e5
-    })),
-    is_primary: index === 0
-  }));
+
+  return data.routes.map((route, index) => {
+    const legs = Array.isArray(route.legs)
+      ? route.legs.map((leg, legIdx) => ({
+          step: legIdx + 1,
+          distance_km: Math.round(leg.distance / 100) / 10,
+          duration_minutes: Math.round(leg.duration / 60)
+        }))
+      : [];
+
+    return {
+      id: index,
+      distance_km: Math.round(route.distance / 100) / 10,
+      duration_hours: Math.round((route.duration / 3600) * 100) / 100,
+      duration_minutes: Math.round(route.duration / 60),
+      legs,
+      geometry: (route.geometry && route.geometry.coordinates || []).map(([lng, lat]) => ({
+        lat: Math.round(lat * 1e5) / 1e5,
+        lng: Math.round(lng * 1e5) / 1e5
+      })),
+      is_primary: index === 0
+    };
+  });
 }
 
-function fallbackRoute(from, to, reason) {
-  const straight = haversineDistance(from.lat, from.lng, to.lat, to.lng);
-  const distance = Math.max(1, Math.round(straight * 1.28 * 10) / 10);
+function fallbackRouteMulti(points, reason) {
+  let totalDistance = 0;
+  const legs = [];
+  const geometry = [];
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const from = points[i];
+    const to = points[i + 1];
+    const legDist = Math.max(1, Math.round(haversineDistance(from.lat, from.lng, to.lat, to.lng) * 1.28 * 10) / 10);
+    totalDistance += legDist;
+    legs.push({
+      step: i + 1,
+      from: from.name || `Point ${i + 1}`,
+      to: to.name || `Point ${i + 2}`,
+      distance_km: legDist,
+      duration_minutes: Math.round((legDist / 48) * 60)
+    });
+    if (i === 0) geometry.push({ lat: from.lat, lng: from.lng });
+    geometry.push({ lat: to.lat, lng: to.lng });
+  }
+
+  totalDistance = Math.round(totalDistance * 10) / 10;
+  const durationHours = Math.round((totalDistance / 48) * 100) / 100;
+  const durationMinutes = Math.round((totalDistance / 48) * 60);
+
   return {
     source: 'haversine_fallback',
     is_estimate: true,
     warning: `OSRM unavailable (${reason}). Distance is a straight-line estimate multiplied by 1.28, not actual road distance.`,
     routes: [{
       id: 0,
-      distance_km: distance,
-      duration_hours: Math.round((distance / 48) * 100) / 100,
-      duration_minutes: Math.round((distance / 48) * 60),
-      geometry: [
-        { lat: from.lat, lng: from.lng },
-        { lat: to.lat, lng: to.lng }
-      ],
+      distance_km: totalDistance,
+      duration_hours: durationHours,
+      duration_minutes: durationMinutes,
+      legs,
+      geometry,
       is_primary: true,
       is_estimate: true
     }]
@@ -86,13 +122,16 @@ function fallbackRoute(from, to, reason) {
 }
 
 /**
- * Route between two place names or {lat,lng} objects.
+ * Route between two place names or {lat,lng} objects, with optional intermediate waypoints.
  * Never throws for a routing failure: returns a labelled fallback instead.
  */
-async function routePlaces(fromPlace, toPlace) {
-  const [from, to] = await Promise.all([
-    typeof fromPlace === 'object' ? fromPlace : geocode(fromPlace),
-    typeof toPlace === 'object' ? toPlace : geocode(toPlace)
+async function routePlaces(fromPlace, toPlace, waypoints = []) {
+  const rawWaypoints = Array.isArray(waypoints) ? waypoints : [];
+
+  const [from, to, ...resolvedWaypoints] = await Promise.all([
+    typeof fromPlace === 'object' && fromPlace !== null ? fromPlace : geocode(fromPlace),
+    typeof toPlace === 'object' && toPlace !== null ? toPlace : geocode(toPlace),
+    ...rawWaypoints.map((w) => (typeof w === 'object' && w !== null ? w : geocode(w)))
   ]);
 
   if (!from || !to) {
@@ -104,14 +143,18 @@ async function routePlaces(fromPlace, toPlace) {
     };
   }
 
-  const key = cacheKey(from, to);
+  // Filter out any waypoints that failed to geocode, but keep valid ones
+  const validWaypoints = resolvedWaypoints.filter((w) => w && Number.isFinite(w.lat) && Number.isFinite(w.lng));
+  const allPoints = [from, ...validWaypoints, to];
+
+  const key = cacheKey(allPoints);
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    return { ...cached.value, cached: true, from, to };
+    return { ...cached.value, cached: true, from, to, waypoints: validWaypoints };
   }
 
   try {
-    const routes = await fetchOsrm(from, to);
+    const routes = await fetchOsrmRoute(allPoints);
     const value = {
       available: true,
       source: 'osrm',
@@ -122,9 +165,17 @@ async function routePlaces(fromPlace, toPlace) {
       routes
     };
     cache.set(key, { at: Date.now(), value });
-    return { ...value, cached: false, from, to };
+    return { ...value, cached: false, from, to, waypoints: validWaypoints };
   } catch (err) {
-    return { ...fallbackRoute(from, to, err.message), available: true, from, to, fetched_at: new Date().toISOString(), cached: false };
+    return {
+      ...fallbackRouteMulti(allPoints, err.message),
+      available: true,
+      from,
+      to,
+      waypoints: validWaypoints,
+      fetched_at: new Date().toISOString(),
+      cached: false
+    };
   }
 }
 

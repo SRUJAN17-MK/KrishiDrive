@@ -2,15 +2,19 @@ import React, { useState, useEffect } from 'react'
 import {
   Package, Truck, MapPin, Clock, CheckCircle2,
   Navigation, Phone, ShieldCheck, AlertCircle, ArrowRight,
-  Lock, KeyRound
+  Lock, KeyRound, Route as RouteIcon, ChevronDown, ChevronUp, Loader
 } from 'lucide-react'
 import { api } from '../services/api'
+import RouteMap from '../components/RouteMap'
 import toast from 'react-hot-toast'
 
 export default function FarmerDeliveries() {
   const [trips, setTrips] = useState([])
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
+  const [openMapTripId, setOpenMapTripId] = useState(null)
+  const [routeCache, setRouteCache] = useState({})
+  const [routeLoading, setRouteLoading] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -31,6 +35,29 @@ export default function FarmerDeliveries() {
     loadData()
   }, [])
 
+  const toggleTripMap = async (trip) => {
+    if (openMapTripId === trip.id) {
+      setOpenMapTripId(null)
+      return
+    }
+
+    setOpenMapTripId(trip.id)
+    if (routeCache[trip.id]) return
+
+    setRouteLoading(true)
+    try {
+      const data = await api.ai.routeOptimization({
+        pickup: trip.pickup,
+        destination: trip.destination
+      })
+      setRouteCache((prev) => ({ ...prev, [trip.id]: data }))
+    } catch (err) {
+      toast.error('Unable to fetch live road route for map')
+    } finally {
+      setRouteLoading(false)
+    }
+  }
+
   const statusSteps = ['scheduled', 'pickup', 'loading', 'in_transit', 'completed']
 
   const getStepProgress = (status) => {
@@ -45,14 +72,16 @@ export default function FarmerDeliveries() {
           Live Mandi Transit &amp; Deliveries
         </h1>
         <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Monitor your dispatched produce in real-time from farm gate to market terminal.
+          Monitor your dispatched produce in real-time with road route mapping from farm gate to market terminal.
         </p>
       </div>
 
       <div className="space-y-5">
-        {trips.map(trip => {
-          const req = requests.find(r => r.id === trip.request)
+        {trips.map((trip) => {
+          const req = requests.find((r) => r.id === trip.request)
           const currentStep = getStepProgress(trip.status)
+          const isMapOpen = openMapTripId === trip.id
+          const cachedRoute = routeCache[trip.id]
 
           return (
             <div
@@ -61,7 +90,7 @@ export default function FarmerDeliveries() {
             >
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-[#1e362e]">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold flex-shrink-0">
                     <Truck size={22} />
                   </div>
                   <div>
@@ -94,18 +123,46 @@ export default function FarmerDeliveries() {
                   </div>
                 </div>
 
-                <div className="text-right flex lg:flex-col items-center lg:items-end justify-between gap-2">
-                  <div>
+                <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between gap-3">
+                  <div className="text-left lg:text-right">
                     <div className="text-lg font-black text-emerald-700 dark:text-emerald-400">
                       ₹{(trip.earnings || req?.estimated_cost || 4500).toLocaleString()}
                     </div>
                     <div className="text-[10px] text-gray-400">Total Transit Fee</div>
                   </div>
-                  <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                    <ShieldCheck size={14} /> Transit Insured
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => toggleTripMap(trip)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-[#274a3d] hover:border-emerald-500 bg-white dark:bg-[#162a23] text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm transition"
+                  >
+                    <RouteIcon size={14} className="text-emerald-600" />
+                    <span>{isMapOpen ? 'Hide Map' : 'View Route Map'}</span>
+                    {isMapOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
                 </div>
               </div>
+
+              {/* Collapsible Leaflet Route Map */}
+              {isMapOpen && (
+                <div className="pt-4 border-b border-gray-100 dark:border-[#1e362e] pb-4">
+                  {routeLoading && !cachedRoute ? (
+                    <div className="flex items-center justify-center p-8 gap-2 text-xs text-gray-500">
+                      <Loader size={16} className="animate-spin text-emerald-600" />
+                      Loading road route map…
+                    </div>
+                  ) : (
+                    <RouteMap
+                      geometry={cachedRoute?.geometry || []}
+                      alternatives={cachedRoute?.alternatives || []}
+                      pickup={trip.pickup}
+                      destination={trip.destination}
+                      height={280}
+                      label={`Trip #${trip.id}: ${trip.pickup} to ${trip.destination}`}
+                    />
+                  )}
+                </div>
+              )}
 
               {/* Progress Milestones */}
               <div className="pt-6">

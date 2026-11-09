@@ -155,6 +155,22 @@ export default function FarmMap({
     markersLayerRef.current = markersLayer
     mapInstanceRef.current = map
 
+    // Fix initial grey tile bug when mounted in tabs/drawers
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+    }, 120)
+
+    // ResizeObserver to handle container resizes & tab switches
+    let resizeObserver = null
+    if (window.ResizeObserver && mapContainerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize()
+        }
+      })
+      resizeObserver.observe(mapContainerRef.current)
+    }
+
     // Map click handler to add points when in drawing mode
     map.on('click', (e) => {
       if (readOnly) return
@@ -163,6 +179,8 @@ export default function FarmMap({
     })
 
     return () => {
+      clearTimeout(timer)
+      if (resizeObserver) resizeObserver.disconnect()
       map.remove()
       mapInstanceRef.current = null
     }
@@ -293,7 +311,11 @@ export default function FarmMap({
         }
       },
       (err) => {
-        setStatusMessage(`Location error: ${err.message}`)
+        let msg = `GPS error: ${err.message}`
+        if (err.code === 1) msg = 'Location permission denied. Please allow location access in your browser settings.'
+        else if (err.code === 2) msg = 'Position unavailable. Check your device GPS signal.'
+        else if (err.code === 3) msg = 'Location request timed out. Please retry.'
+        setStatusMessage(msg)
       },
       { enableHighAccuracy: true, timeout: 10000 }
     )

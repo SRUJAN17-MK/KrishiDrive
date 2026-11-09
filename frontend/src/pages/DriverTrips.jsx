@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Navigation, MapPin, Clock, CheckCircle2,
   Package, IndianRupee, ShieldCheck, ArrowRight, Loader,
-  KeyRound, X
+  KeyRound, X, Route as RouteIcon
 } from 'lucide-react'
 import { api } from '../services/api'
 import toast from 'react-hot-toast'
@@ -18,14 +19,10 @@ function OtpModal({ tripId, onSuccess, onClose }) {
     if (otp.trim().length === 0) return
     setSubmitting(true)
     try {
-      const res = await fetch('/api/transport/complete-delivery', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tripId: Number(tripId), otp: otp.trim() })
+      await api.post('/transport/complete-delivery', {
+        trip_id: Number(tripId),
+        delivery_otp: otp.trim()
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || json.detail || 'OTP verification failed')
       toast.success('Delivery confirmed! Trip completed.')
       onSuccess()
     } catch (err) {
@@ -195,13 +192,20 @@ export default function DriverTrips() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 self-end lg:self-center">
+                <div className="flex flex-wrap items-center gap-3 self-end lg:self-center">
                   <div className="text-right">
                     <div className="text-base font-black text-emerald-700 dark:text-emerald-400">
                       ₹{(trip.earnings || 3500).toLocaleString()}
                     </div>
                     <div className="text-[10px] text-gray-400">Driver Realization</div>
                   </div>
+
+                  <Link
+                    to={`/driver/routes?pickup=${encodeURIComponent(trip.pickup)}&destination=${encodeURIComponent(trip.destination)}`}
+                    className="px-3.5 py-2 border border-gray-200 dark:border-[#274a3d] hover:border-emerald-500 bg-white dark:bg-[#162a23] text-gray-700 dark:text-gray-200 font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    <RouteIcon size={14} className="text-emerald-600" /> Route Map
+                  </Link>
 
                   {/* For in_transit: OTP button instead of generic advance */}
                   {trip.status === 'in_transit' ? (

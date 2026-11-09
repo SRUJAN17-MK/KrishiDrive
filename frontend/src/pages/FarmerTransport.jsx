@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Truck, Plus, X, MapPin, Brain, Trash2, Calendar, Clock,
-  ShieldCheck, Star, AlertCircle, RefreshCw, CheckCircle2
+  ShieldCheck, Star, AlertCircle, RefreshCw, CheckCircle2,
+  Route as RouteIcon
 } from 'lucide-react'
 import { api, OfflineQueuedError } from '../services/api'
 import { useLanguage } from '../context/LanguageContext'
@@ -184,6 +186,13 @@ export default function FarmerTransport() {
                     {matchLoading && activeReq?.id === request.id ? <RefreshCw size={13} className="animate-spin" /> : <Brain size={13} />} {t('farmer.findTrucks')}
                   </button>
                 )}
+                <Link
+                  to={`/driver/routes?pickup=${encodeURIComponent(request.pickup)}&destination=${encodeURIComponent(request.destination)}`}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-[#274a3d] px-2 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:border-emerald-500 hover:text-emerald-600 transition"
+                  title="View Route Map"
+                >
+                  <RouteIcon size={12} className="text-emerald-600" /> Route
+                </Link>
                 {request.driver && <span className="text-[10px] text-gray-500 inline-flex items-center gap-1"><Truck size={12} /> {request.driver}</span>}
               </div>
               <button onClick={() => remove(request)} aria-label={`Cancel ${request.id}`} className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg"><Trash2 size={14} /></button>

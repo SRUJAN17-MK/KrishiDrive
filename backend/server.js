@@ -1011,13 +1011,14 @@ function sampleGeometry(points, maxPoints = 800) {
 }
 
 app.post('/api/ai/route-optimization', authMiddleware, aiLimiter, async (req, res) => {
-  const { pickup = 'Nashik', destination = 'Mumbai', vehicle_type = 'Truck (10-Ton)', load = 5000 } = req.body;
+  const { pickup = 'Nashik', destination = 'Mumbai', vehicle_type = 'Truck (10-Ton)', load = 5000, waypoints = [] } = req.body;
 
   if (String(pickup).length > 120 || String(destination).length > 120) {
     return res.status(400).json({ detail: 'Pickup and destination must be under 120 characters' });
   }
 
-  const routeResult = await routePlaces(pickup, destination);
+  const safeWaypoints = Array.isArray(waypoints) ? waypoints.slice(0, 8).map(w => String(w).slice(0, 120)) : [];
+  const routeResult = await routePlaces(pickup, destination, safeWaypoints);
   if (!routeResult.available || !routeResult.routes || !routeResult.routes.length) {
     return res.status(422).json({
       detail: routeResult.reason || 'No route could be calculated',
@@ -1053,6 +1054,10 @@ app.post('/api/ai/route-optimization', authMiddleware, aiLimiter, async (req, re
   res.json({
     pickup: routeResult.from?.name || pickup,
     destination: routeResult.to?.name || destination,
+    from: routeResult.from || null,
+    to: routeResult.to || null,
+    waypoints: routeResult.waypoints || [],
+    legs: primary.legs || [],
     vehicle_type,
     load_kg: loadNum,
     route: {
@@ -1275,7 +1280,9 @@ app.post('/api/mandi/where-to-sell', authMiddleware, async (req, res) => {
 
 // ─── TRANSPORT DELIVERY OTP CONFIRMATION (KrishiDrive 3.0) ────────────────────
 app.post('/api/transport/complete-delivery', authMiddleware, requireRole('driver', 'admin'), (req, res) => {
-  const { trip_id, delivery_otp, proof_of_delivery } = req.body;
+  const trip_id = req.body.trip_id ?? req.body.tripId;
+  const delivery_otp = req.body.delivery_otp ?? req.body.otp;
+  const proof_of_delivery = req.body.proof_of_delivery ?? req.body.proof;
   if (!trip_id) return res.status(400).json({ detail: 'trip_id is required' });
   if (!delivery_otp && req.user.role !== 'admin') {
     return res.status(400).json({ detail: '4-digit delivery_otp is required to confirm delivery' });

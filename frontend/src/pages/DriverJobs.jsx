@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Truck, MapPin, IndianRupee, Check, Filter,
-  Calendar, Clock, User, Phone, ShieldCheck, X
+  Calendar, Clock, User, Phone, ShieldCheck, X, Route as RouteIcon
 } from 'lucide-react'
 import { api } from '../services/api'
 import toast from 'react-hot-toast'
@@ -143,24 +144,35 @@ export default function DriverJobs() {
                 <div className="text-[10px] text-gray-400">Direct Haul Tariff</div>
               </div>
 
-              {job.status === 'pending' ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => rejectJob(job.id)}
-                    className="px-3 py-2 text-xs font-bold text-gray-500 hover:text-red-600 bg-gray-100 dark:bg-gray-800 rounded-xl transition flex items-center gap-1"
-                  >
-                    <X size={14} /> Pass
-                  </button>
-                  <button
-                    onClick={() => acceptJob(job)}
-                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition"
-                  >
-                    <Check size={14} /> Accept Job
-                  </button>
-                </div>
-              ) : (
-                <span className="text-xs text-gray-400 font-medium">Assigned to {job.driver || 'Driver'}</span>
-              )}
+              <div className="flex items-center gap-2">
+                <Link
+                  to={`/driver/routes?pickup=${encodeURIComponent(job.pickup)}&destination=${encodeURIComponent(job.destination)}`}
+                  title="Preview Road Route"
+                  className="p-2 border border-gray-200 dark:border-[#274a3d] hover:border-emerald-500 bg-white dark:bg-[#162a23] text-gray-700 dark:text-gray-300 rounded-xl transition flex items-center gap-1 text-xs font-semibold"
+                >
+                  <RouteIcon size={14} className="text-emerald-600" />
+                  <span className="hidden sm:inline">Route</span>
+                </Link>
+
+                {job.status === 'pending' ? (
+                  <>
+                    <button
+                      onClick={() => rejectJob(job.id)}
+                      className="px-3 py-2 text-xs font-bold text-gray-500 hover:text-red-600 bg-gray-100 dark:bg-gray-800 rounded-xl transition flex items-center gap-1"
+                    >
+                      <X size={14} /> Pass
+                    </button>
+                    <button
+                      onClick={() => acceptJob(job)}
+                      className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition"
+                    >
+                      <Check size={14} /> Accept Job
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-400 font-medium">Assigned to {job.driver || 'Driver'}</span>
+                )}
+              </div>
             </div>
           </div>
         ))}
