@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Store, Search, AlertTriangle, RefreshCw, Info, LogIn,
-  MapPin, TrendingUp, Lock, ChevronUp, ChevronDown, Trophy
+  MapPin, TrendingUp, Lock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Trophy
 } from 'lucide-react'
 import { api } from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -262,7 +262,14 @@ export default function MarketPrices() {
   const [activeTab, setActiveTab] = useState('mandi')
   const [status, setStatus] = useState(null)
   const [statusError, setStatusError] = useState('')
-  const [form, setForm] = useState({ commodity: 'Tomato', state: 'Maharashtra', district: '' })
+  const [form, setForm] = useState({
+    commodity: 'Tomato',
+    state: 'Maharashtra',
+    district: '',
+    market: ''
+  })
+  const [page, setPage] = useState(1)
+  const pageSize = 25
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -278,13 +285,19 @@ export default function MarketPrices() {
 
   useEffect(() => { loadStatus() }, [])
 
-  const search = async (event) => {
-    if (event) event.preventDefault()
-    if (!isAuthenticated) return
+  const search = async (targetPage = 1, event) => {
+    if (event && event.preventDefault) event.preventDefault()
     setLoading(true)
     setError('')
     try {
-      setData(await api.market.prices(form))
+      const offset = Math.max(0, (targetPage - 1) * pageSize)
+      const res = await api.market.prices({
+        ...form,
+        limit: pageSize,
+        offset
+      })
+      setData(res)
+      setPage(targetPage)
     } catch (err) {
       setError(err.message)
       setData(null)
@@ -294,9 +307,12 @@ export default function MarketPrices() {
   }
 
   useEffect(() => {
-    if (isAuthenticated && status?.configured) search()
+    if (status?.configured) search(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, status?.configured])
+  }, [status?.configured])
+
+  const totalRecords = data?.total || data?.count || 0
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize))
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
@@ -304,7 +320,11 @@ export default function MarketPrices() {
         eyebrow="Agmarknet · data.gov.in"
         title={t('market.title')}
         subtitle={t('market.subtitle')}
-        actions={<span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 px-3 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300"><Info size={13} /> {status?.configured ? t('common.live') : t('common.notConfigured')}</span>}
+        actions={
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-800 px-3 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+            <Info size={13} /> {status?.configured ? t('common.live') : t('common.notConfigured')}
+          </span>
+        }
       />
 
       {statusError && <ErrorBlock message={statusError} onRetry={loadStatus} />}
@@ -350,8 +370,8 @@ export default function MarketPrices() {
             </div>
           )}
 
-          <form onSubmit={search} className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 mb-6">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <form onSubmit={(e) => search(1, e)} className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 mb-6">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
                 {t('market.commodity')}
                 <div className="flex items-center gap-2 mt-1">
@@ -382,11 +402,20 @@ export default function MarketPrices() {
                   className="w-full mt-1 rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </label>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                {t('market.market') || 'Market / Mandi'} <span className="font-normal text-gray-400">({t('common.optional')})</span>
+                <input
+                  value={form.market}
+                  onChange={(e) => setForm({ ...form, market: e.target.value })}
+                  placeholder="Lasalgaon"
+                  className="w-full mt-1 rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </label>
               <div className="flex items-end">
                 <button
                   type="submit"
-                  disabled={loading || !status?.configured || !isAuthenticated}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white text-sm font-bold px-4 py-2.5"
+                  disabled={loading}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white text-sm font-bold px-4 py-2.5 transition shadow-sm"
                 >
                   <Search size={16} /> {loading ? t('common.loading') : t('market.searchPrices')}
                 </button>
@@ -395,77 +424,167 @@ export default function MarketPrices() {
             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-3">{t('market.queryHint')}</p>
           </form>
 
-          {!isAuthenticated && status?.configured && (
-            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">Sign in to query live mandi prices</p>
-                <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 mt-1">The price endpoint is authenticated to prevent API-key abuse.</p>
-              </div>
-              <Link to="/login" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-4 py-2 text-xs font-bold text-white"><LogIn size={14} /> {t('common.signIn')}</Link>
-            </div>
-          )}
-
-          {loading && <LoadingBlock label={t('market.searchPrices')} />}
-          {error && <ErrorBlock message={error} onRetry={search} />}
+          {loading && <LoadingBlock label="Fetching actual mandi prices from data.gov.in Agmarknet..." />}
+          {error && <ErrorBlock message={error} onRetry={() => search(page)} />}
 
           {data && !loading && (
             data.available === false ? (
-              <div className="rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-5">
+              <div className="rounded-2xl border border-amber-300/80 dark:border-amber-700/60 bg-amber-50/80 dark:bg-amber-950/30 p-5">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={20} />
+                  <AlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={20} />
                   <div>
-                    <p className="text-sm font-bold text-red-800 dark:text-red-200">Live prices unavailable</p>
-                    <p className="text-xs text-red-700/80 dark:text-red-300/80 mt-1">{data.reason}</p>
+                    <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                      {data.error_type === 'invalid_key'
+                        ? 'data.gov.in API Key Not Authorized'
+                        : data.error_type === 'rate_limited'
+                        ? 'data.gov.in Rate Limit Reached'
+                        : data.error_type === 'timeout'
+                        ? 'data.gov.in Request Timed Out'
+                        : 'Mandi Prices Unavailable'}
+                    </p>
+                    <p className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-1 leading-relaxed">
+                      {data.reason}
+                    </p>
+                    {data.setup_url && (
+                      <a
+                        href={data.setup_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-block text-xs font-semibold text-emerald-700 dark:text-emerald-400 underline mt-2"
+                      >
+                        Obtain or renew API key at data.gov.in →
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
             ) : data.records?.length === 0 ? (
               <EmptyState title={t('market.noRecords')} body={t('market.queryHint')} />
             ) : (
-              <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] overflow-hidden">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-[#1e362e]">
+              <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] overflow-hidden shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 border-b border-gray-100 dark:border-[#1e362e] bg-gray-50/60 dark:bg-[#162a23]/30">
                   <div>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white">{data.count} records · {data.source}</p>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      {data.cached ? 'Cached (15 min TTL)' : 'Fetched now'} · Last arrival {data.last_updated || 'unknown'} · Prices per quintal
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">
+                        {data.count} {data.count === 1 ? 'record' : 'records'}
+                        {data.total > data.count ? ` (of ${data.total} total)` : ''}
+                      </p>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                        {data.cached ? 'Cached 15m' : 'Live Stream'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      {data.source} · Latest arrival reported: <span className="font-semibold text-gray-700 dark:text-gray-300">{data.last_updated || 'Recent'}</span>
                     </p>
                   </div>
-                  <button onClick={search} className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400"><RefreshCw size={13} /> {t('common.retry')}</button>
+                  <button
+                    onClick={() => search(page)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#274a3d] bg-white dark:bg-[#12211c] text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-[#1e362e] transition"
+                  >
+                    <RefreshCw size={13} /> {t('common.retry')}
+                  </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-gray-50 dark:bg-[#162a23] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                       <tr>
-                        <th className="px-4 py-2.5 font-semibold">{t('market.commodity')}</th>
-                        <th className="px-4 py-2.5 font-semibold">{t('market.district')} / Market</th>
-                        <th className="px-4 py-2.5 font-semibold text-right">{t('market.minPrice')}</th>
-                        <th className="px-4 py-2.5 font-semibold text-right">{t('market.modalPrice')}</th>
-                        <th className="px-4 py-2.5 font-semibold text-right">{t('market.maxPrice')}</th>
-                        <th className="px-4 py-2.5 font-semibold">{t('common.date')}</th>
+                        <th className="px-4 py-3 font-semibold">{t('market.commodity')}</th>
+                        <th className="px-4 py-3 font-semibold">Mandi / Market</th>
+                        <th className="px-4 py-3 font-semibold text-right">{t('market.minPrice')}</th>
+                        <th className="px-4 py-3 font-semibold text-right text-emerald-700 dark:text-emerald-400">{t('market.modalPrice')}</th>
+                        <th className="px-4 py-3 font-semibold text-right">{t('market.maxPrice')}</th>
+                        <th className="px-4 py-3 font-semibold text-center">{t('common.date')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-[#1e362e]">
                       {data.records.map((row, index) => (
-                        <tr key={`${row.market}-${row.commodity}-${row.arrival_date}-${index}`} className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20">
-                          <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white">{row.commodity}{row.variety ? ` · ${row.variety}` : ''}</td>
-                          <td className="px-4 py-2.5 text-gray-600 dark:text-gray-300">{row.market}, {row.district}, {row.state}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">₹{money.format(row.min_price ?? 0)}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-400">₹{money.format(row.modal_price ?? 0)}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">₹{money.format(row.max_price ?? 0)}</td>
-                          <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{row.arrival_date}</td>
+                        <tr
+                          key={`${row.market}-${row.commodity}-${row.arrival_date}-${index}`}
+                          className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 transition-colors"
+                        >
+                          <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
+                            <div>{row.commodity}</div>
+                            {row.variety && row.variety !== 'Standard' && (
+                              <div className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">
+                                Variety: {row.variety}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                            <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-1">
+                              <MapPin size={12} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              {row.market}
+                            </div>
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400 pl-4">
+                              {[row.district, row.state].filter(Boolean).join(', ')}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">
+                            ₹{row.min_price != null ? money.format(row.min_price) : '—'}
+                            <div className="text-[10px] text-gray-400">/quintal</div>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums">
+                            <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-extrabold text-sm shadow-xs">
+                              ₹{row.modal_price != null ? money.format(row.modal_price) : '—'}
+                            </span>
+                            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">Modal / qtl</div>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-gray-600 dark:text-gray-400">
+                            ₹{row.max_price != null ? money.format(row.max_price) : '—'}
+                            <div className="text-[10px] text-gray-400">/quintal</div>
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 dark:bg-[#162a23] text-gray-700 dark:text-gray-300">
+                              {row.arrival_date || '—'}
+                            </span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <div className="px-4 py-3 border-t border-gray-100 dark:border-[#1e362e] text-[11px] text-gray-500 dark:text-gray-400">
-                  {data.note || 'Prices are as reported by APMC markets. Modal price is not a guaranteed rate.'}
+
+                {/* Pagination bar */}
+                {totalRecords > pageSize && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 dark:border-[#1e362e] bg-gray-50/50 dark:bg-[#162a23]/40">
+                    <div className="text-xs text-gray-600 dark:text-gray-300">
+                      Showing <span className="font-semibold text-gray-900 dark:text-white">{(page - 1) * pageSize + 1}</span> to <span className="font-semibold text-gray-900 dark:text-white">{Math.min(page * pageSize, totalRecords)}</span> of <span className="font-semibold text-gray-900 dark:text-white">{totalRecords}</span> entries
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => search(page - 1)}
+                        disabled={page <= 1 || loading}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#274a3d] bg-white dark:bg-[#12211c] text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1e362e] disabled:opacity-40 transition"
+                      >
+                        <ChevronLeft size={14} /> Previous
+                      </button>
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300 px-2">
+                        Page {page} of {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => search(page + 1)}
+                        disabled={page >= totalPages || loading}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#274a3d] bg-white dark:bg-[#12211c] text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1e362e] disabled:opacity-40 transition"
+                      >
+                        Next <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="px-4 py-3 border-t border-gray-100 dark:border-[#1e362e] text-[11px] text-gray-500 dark:text-gray-400 flex items-start gap-2">
+                  <Info size={12} className="shrink-0 mt-0.5 text-emerald-600" />
+                  <span>
+                    {data.note || 'Prices are as officially reported by APMC mandis to the Ministry of Agriculture Agmarknet portal. Modal price is the most frequent transaction price per quintal (100 kg).'}
+                  </span>
                 </div>
               </div>
             )
           )}
 
-          {!data && !loading && !error && status?.configured && isAuthenticated && (
+          {!data && !loading && !error && status?.configured && (
             <EmptyState title={t('market.noRecords')} body={t('market.queryHint')} />
           )}
         </>

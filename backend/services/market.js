@@ -1,206 +1,332 @@
 /**
- * Agmarknet mandi prices via the official data.gov.in API & Market Intelligence.
+ * Official Government of India data.gov.in Agmarknet Mandi Prices API Integration.
  *
- * Dataset: "Current Daily Price of Various Commodities from Various Markets (Mandi)"
- * Resource: 9ef84268-d588-465a-a308-a864a43d0070.
+ * API Endpoint: https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070
+ * Resource ID: 9ef84268-d588-465a-a308-a864a43d0070
+ * Environment Variable: AGMARKNET_API_KEY
  *
- * When an AGMARKNET_API_KEY is configured, it queries data.gov.in in real-time.
- * When not configured, it serves verified official APMC benchmark reference data
- * from data.gov.in, clearly labelled so farmers always have access to wholesale market
- * structures without seeing mock placeholder errors.
+ * Rules:
+ * - Read API key securely from backend process.env.AGMARKNET_API_KEY
+ * - Never expose the API key to frontend
+ * - Never fabricate or simulate prices
+ * - Cache upstream results in-memory with TTL
+ * - Return min_price, max_price, modal_price, arrival_date, market, district, state
+ * - Support filtering by commodity, state, district, market
+ * - Support pagination (limit, offset)
+ * - Provide decision intelligence in "Where Should I Sell?" comparing net realization
  */
 'use strict';
 
 const { routePlaces } = require('./routing');
-const { geocode } = require('./geo');
 
 const RESOURCE_ID = process.env.AGMARKNET_RESOURCE_ID || '9ef84268-d588-465a-a308-a864a43d0070';
-const API_KEY = process.env.AGMARKNET_API_KEY || process.env.DATA_GOV_IN_API_KEY || '';
 const BASE_URL = 'https://api.data.gov.in/resource';
-const CACHE_TTL_MS = 15 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_CACHE_ENTRIES = 500;
 const cache = new Map();
 
-// Official Agmarknet APMC Reference Baseline Records (published under National Data Sharing and Accessibility Policy)
-const BASELINE_MANDI_RECORDS = [
-  { commodity: 'Tomato', commodity_group: 'Vegetables', variety: 'Hybrid', grade: 'FAQ', market: 'Nashik', district: 'Nashik', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 1800, max_price: 2600, modal_price: 2250, unit: 'INR per quintal' },
-  { commodity: 'Tomato', commodity_group: 'Vegetables', variety: 'Local', grade: 'FAQ', market: 'Vashi (Mumbai)', district: 'Mumbai', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 2200, max_price: 3200, modal_price: 2850, unit: 'INR per quintal' },
-  { commodity: 'Tomato', commodity_group: 'Vegetables', variety: 'Hybrid', grade: 'FAQ', market: 'Pune (Gultekdi)', district: 'Pune', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 2000, max_price: 2900, modal_price: 2500, unit: 'INR per quintal' },
-  { commodity: 'Tomato', commodity_group: 'Vegetables', variety: 'Desi', grade: 'FAQ', market: 'Azadpur', district: 'Delhi', state: 'NCT of Delhi', arrival_date: '2026-11-04', min_price: 2400, max_price: 3400, modal_price: 3050, unit: 'INR per quintal' },
-  { commodity: 'Tomato', commodity_group: 'Vegetables', variety: 'Hybrid', grade: 'FAQ', market: 'Kolar', district: 'Kolar', state: 'Karnataka', arrival_date: '2026-11-04', min_price: 1600, max_price: 2400, modal_price: 2050, unit: 'INR per quintal' },
-  { commodity: 'Tomato', commodity_group: 'Vegetables', variety: 'Hybrid', grade: 'FAQ', market: 'Ahmedabad', district: 'Ahmedabad', state: 'Gujarat', arrival_date: '2026-11-04', min_price: 1900, max_price: 2750, modal_price: 2400, unit: 'INR per quintal' },
-
-  { commodity: 'Onion', commodity_group: 'Vegetables', variety: 'Red', grade: 'FAQ', market: 'Lasalgaon', district: 'Nashik', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 1550, max_price: 2400, modal_price: 2050, unit: 'INR per quintal' },
-  { commodity: 'Onion', commodity_group: 'Vegetables', variety: 'Red', grade: 'FAQ', market: 'Pimpalgaon', district: 'Nashik', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 1600, max_price: 2450, modal_price: 2100, unit: 'INR per quintal' },
-  { commodity: 'Onion', commodity_group: 'Vegetables', variety: 'Red', grade: 'FAQ', market: 'Vashi (Mumbai)', district: 'Mumbai', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 2100, max_price: 2950, modal_price: 2600, unit: 'INR per quintal' },
-  { commodity: 'Onion', commodity_group: 'Vegetables', variety: 'Red', grade: 'FAQ', market: 'Azadpur', district: 'Delhi', state: 'NCT of Delhi', arrival_date: '2026-11-04', min_price: 2200, max_price: 3100, modal_price: 2750, unit: 'INR per quintal' },
-  { commodity: 'Onion', commodity_group: 'Vegetables', variety: 'Red', grade: 'FAQ', market: 'Indore', district: 'Indore', state: 'Madhya Pradesh', arrival_date: '2026-11-04', min_price: 1700, max_price: 2500, modal_price: 2200, unit: 'INR per quintal' },
-
-  { commodity: 'Wheat', commodity_group: 'Cereals', variety: 'Sharbati', grade: 'FAQ', market: 'Ludhiana', district: 'Ludhiana', state: 'Punjab', arrival_date: '2026-11-04', min_price: 2275, max_price: 2650, modal_price: 2450, unit: 'INR per quintal' },
-  { commodity: 'Wheat', commodity_group: 'Cereals', variety: 'Kalyan Sona', grade: 'FAQ', market: 'Khanna', district: 'Ludhiana', state: 'Punjab', arrival_date: '2026-11-04', min_price: 2275, max_price: 2580, modal_price: 2400, unit: 'INR per quintal' },
-  { commodity: 'Wheat', commodity_group: 'Cereals', variety: 'Mill Quality', grade: 'FAQ', market: 'Indore', district: 'Indore', state: 'Madhya Pradesh', arrival_date: '2026-11-04', min_price: 2350, max_price: 2850, modal_price: 2620, unit: 'INR per quintal' },
-  { commodity: 'Wheat', commodity_group: 'Cereals', variety: 'Lokwan', grade: 'FAQ', market: 'Bhopal', district: 'Bhopal', state: 'Madhya Pradesh', arrival_date: '2026-11-04', min_price: 2300, max_price: 2750, modal_price: 2550, unit: 'INR per quintal' },
-  { commodity: 'Wheat', commodity_group: 'Cereals', variety: 'Dara', grade: 'FAQ', market: 'Hapur', district: 'Hapur', state: 'Uttar Pradesh', arrival_date: '2026-11-04', min_price: 2250, max_price: 2550, modal_price: 2420, unit: 'INR per quintal' },
-
-  { commodity: 'Rice', commodity_group: 'Cereals', variety: 'Basmati 1121', grade: 'FAQ', market: 'Karnal', district: 'Karnal', state: 'Haryana', arrival_date: '2026-11-04', min_price: 3600, max_price: 4350, modal_price: 4100, unit: 'INR per quintal' },
-  { commodity: 'Rice', commodity_group: 'Cereals', variety: 'Basmati Traditional', grade: 'FAQ', market: 'Amritsar', district: 'Amritsar', state: 'Punjab', arrival_date: '2026-11-04', min_price: 3800, max_price: 4500, modal_price: 4250, unit: 'INR per quintal' },
-  { commodity: 'Rice', commodity_group: 'Cereals', variety: 'Common PR-126', grade: 'FAQ', market: 'Ludhiana', district: 'Ludhiana', state: 'Punjab', arrival_date: '2026-11-04', min_price: 2203, max_price: 2350, modal_price: 2280, unit: 'INR per quintal' },
-  { commodity: 'Rice', commodity_group: 'Cereals', variety: 'Sona Masoori', grade: 'FAQ', market: 'Kurnool', district: 'Kurnool', state: 'Andhra Pradesh', arrival_date: '2026-11-04', min_price: 2600, max_price: 3350, modal_price: 3100, unit: 'INR per quintal' },
-
-  { commodity: 'Cotton', commodity_group: 'Fibres', variety: 'Medium Staple', grade: 'FAQ', market: 'Rajkot', district: 'Rajkot', state: 'Gujarat', arrival_date: '2026-11-04', min_price: 6700, max_price: 7600, modal_price: 7250, unit: 'INR per quintal' },
-  { commodity: 'Cotton', commodity_group: 'Fibres', variety: 'Long Staple', grade: 'FAQ', market: 'Adilabad', district: 'Adilabad', state: 'Telangana', arrival_date: '2026-11-04', min_price: 6800, max_price: 7750, modal_price: 7400, unit: 'INR per quintal' },
-  { commodity: 'Cotton', commodity_group: 'Fibres', variety: 'Shankar-6', grade: 'FAQ', market: 'Amravati', district: 'Amravati', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 6650, max_price: 7500, modal_price: 7150, unit: 'INR per quintal' },
-
-  { commodity: 'Soybean', commodity_group: 'Oilseeds', variety: 'Yellow', grade: 'FAQ', market: 'Indore', district: 'Indore', state: 'Madhya Pradesh', arrival_date: '2026-11-04', min_price: 4400, max_price: 4950, modal_price: 4720, unit: 'INR per quintal' },
-  { commodity: 'Soybean', commodity_group: 'Oilseeds', variety: 'Yellow', grade: 'FAQ', market: 'Ujjain', district: 'Ujjain', state: 'Madhya Pradesh', arrival_date: '2026-11-04', min_price: 4350, max_price: 4900, modal_price: 4680, unit: 'INR per quintal' },
-  { commodity: 'Soybean', commodity_group: 'Oilseeds', variety: 'Yellow', grade: 'FAQ', market: 'Nagpur', district: 'Nagpur', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 4380, max_price: 4890, modal_price: 4650, unit: 'INR per quintal' },
-
-  { commodity: 'Potato', commodity_group: 'Vegetables', variety: 'Jyoti', grade: 'FAQ', market: 'Agra', district: 'Agra', state: 'Uttar Pradesh', arrival_date: '2026-11-04', min_price: 1350, max_price: 1850, modal_price: 1650, unit: 'INR per quintal' },
-  { commodity: 'Potato', commodity_group: 'Vegetables', variety: 'Pukhraj', grade: 'FAQ', market: 'Jalandhar', district: 'Jalandhar', state: 'Punjab', arrival_date: '2026-11-04', min_price: 1200, max_price: 1700, modal_price: 1520, unit: 'INR per quintal' },
-  { commodity: 'Potato', commodity_group: 'Vegetables', variety: 'Local', grade: 'FAQ', market: 'Azadpur', district: 'Delhi', state: 'NCT of Delhi', arrival_date: '2026-11-04', min_price: 1600, max_price: 2200, modal_price: 1950, unit: 'INR per quintal' },
-
-  { commodity: 'Mustard', commodity_group: 'Oilseeds', variety: 'Black', grade: 'FAQ', market: 'Jaipur', district: 'Jaipur', state: 'Rajasthan', arrival_date: '2026-11-04', min_price: 5200, max_price: 5850, modal_price: 5600, unit: 'INR per quintal' },
-  { commodity: 'Mustard', commodity_group: 'Oilseeds', variety: 'Yellow', grade: 'FAQ', market: 'Alwar', district: 'Alwar', state: 'Rajasthan', arrival_date: '2026-11-04', min_price: 5350, max_price: 5980, modal_price: 5720, unit: 'INR per quintal' },
-
-  { commodity: 'Grapes', commodity_group: 'Fruits', variety: 'Thompson Seedless', grade: 'FAQ', market: 'Nashik', district: 'Nashik', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 4500, max_price: 7800, modal_price: 6400, unit: 'INR per quintal' },
-  { commodity: 'Grapes', commodity_group: 'Fruits', variety: 'Thompson Seedless', grade: 'FAQ', market: 'Vashi (Mumbai)', district: 'Mumbai', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 5500, max_price: 9200, modal_price: 7800, unit: 'INR per quintal' },
-  { commodity: 'Grapes', commodity_group: 'Fruits', variety: 'Thompson Seedless', grade: 'FAQ', market: 'Pune (Gultekdi)', district: 'Pune', state: 'Maharashtra', arrival_date: '2026-11-04', min_price: 5000, max_price: 8400, modal_price: 7100, unit: 'INR per quintal' }
-];
-
-function numberOrNull(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const n = Number(String(value).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : null;
-}
-
-function normaliseRecord(row) {
-  const min = numberOrNull(row.min_price);
-  const max = numberOrNull(row.max_price);
-  const modal = numberOrNull(row.modal_price);
-  return {
-    commodity: row.commodity || '',
-    commodity_group: row.commodity_group || '',
-    variety: row.variety || '',
-    grade: row.grade || '',
-    market: row.market || '',
-    district: row.district || '',
-    state: row.state || '',
-    arrival_date: row.arrival_date || '',
-    min_price: min,
-    max_price: max,
-    modal_price: modal,
-    unit: 'INR per quintal',
-    price_range: min !== null && max !== null ? max - min : null
-  };
+function getApiKey() {
+  return (process.env.AGMARKNET_API_KEY || process.env.DATA_GOV_IN_API_KEY || '').trim();
 }
 
 function isConfigured() {
-  return Boolean(API_KEY);
+  const key = getApiKey();
+  return Boolean(key && key !== 'your_data_gov_in_api_key_here');
+}
+
+function parseNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const cleaned = String(value).replace(/,/g, '').trim();
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
- * Get prices with live data.gov.in integration or verified Agmarknet baseline.
+ * Standardize arrival date into both original and ISO string (YYYY-MM-DD).
+ * data.gov.in often uses DD/MM/YYYY or YYYY-MM-DD.
+ */
+function normalizeDate(rawDate) {
+  if (!rawDate) return '';
+  const str = String(rawDate).trim();
+  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  return str;
+}
+
+/**
+ * Normalizes a record from data.gov.in into standard KrishiDrive schema.
+ * Handles both lowercase and capitalized keys from different data.gov.in serialization passes.
+ */
+function normaliseRecord(row) {
+  if (!row || typeof row !== 'object') return null;
+
+  const state = String(row.state || row.State || '').trim();
+  const district = String(row.district || row.District || '').trim();
+  const market = String(row.market || row.Market || '').trim();
+  const commodity = String(row.commodity || row.Commodity || '').trim();
+  const variety = String(row.variety || row.Variety || 'Standard').trim();
+  const grade = String(row.grade || row.Grade || 'FAQ').trim();
+  const rawDate = row.arrival_date || row.Arrival_Date || row.date || '';
+  const arrivalDate = normalizeDate(rawDate);
+
+  const minPrice = parseNumber(row.min_price ?? row.Min_Price ?? row.minimum_price);
+  const maxPrice = parseNumber(row.max_price ?? row.Max_Price ?? row.maximum_price);
+  const modalPrice = parseNumber(row.modal_price ?? row.Modal_Price ?? row.modal_rate);
+
+  return {
+    commodity,
+    commodity_group: String(row.commodity_group || row.Commodity_Group || '').trim(),
+    variety,
+    grade,
+    market,
+    district,
+    state,
+    arrival_date: arrivalDate || rawDate,
+    raw_arrival_date: rawDate,
+    min_price: minPrice,
+    max_price: maxPrice,
+    modal_price: modalPrice,
+    unit: 'INR per quintal',
+    price_range: (minPrice !== null && maxPrice !== null) ? Math.max(0, maxPrice - minPrice) : null
+  };
+}
+
+/**
+ * Fetch live mandi prices from Government of India data.gov.in resource 9ef84268-d588-465a-a308-a864a43d0070.
  */
 async function getPrices({ commodity, state, district, market, limit = 50, offset = 0 } = {}) {
-  const lim = Math.max(1, Math.min(500, Number(limit) || 50));
-  const off = Math.max(0, Number(offset) || 0);
-  const key = JSON.stringify({ commodity, state, district, market, lim, off, live: isConfigured() });
-  const cached = cache.get(key);
+  const lim = Math.max(1, Math.min(500, parseInt(limit, 10) || 50));
+  const off = Math.max(0, parseInt(offset, 10) || 0);
+
+  const filterCommodity = commodity ? String(commodity).trim() : '';
+  const filterState = state ? String(state).trim() : '';
+  const filterDistrict = district ? String(district).trim() : '';
+  const filterMarket = market ? String(market).trim() : '';
+
+  const cacheKey = JSON.stringify({
+    commodity: filterCommodity.toLowerCase(),
+    state: filterState.toLowerCase(),
+    district: filterDistrict.toLowerCase(),
+    market: filterMarket.toLowerCase(),
+    lim,
+    off
+  });
+
+  const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    return { ...cached.value, cached: true };
+    return { ...cached.value, cached: true, cached_at: new Date(cached.at).toISOString() };
   }
 
+  const apiKey = getApiKey();
   if (!isConfigured()) {
     return {
       available: false,
       configured: false,
       source: 'Agmarknet via data.gov.in',
-      reason: 'AGMARKNET_API_KEY is not configured in backend/.env. Obtain a free key at data.gov.in.',
+      resource_id: RESOURCE_ID,
+      reason: 'AGMARKNET_API_KEY is not configured in backend/.env. Obtain a free API key at https://data.gov.in/ to access live APMC wholesale mandi prices.',
       setup_url: 'https://www.data.gov.in/my-account/api-keys',
+      env_var: 'AGMARKNET_API_KEY',
       fetched_at: new Date().toISOString(),
       count: 0,
       total: 0,
+      offset: off,
+      limit: lim,
       records: [],
-      note: 'Live mandi prices require AGMARKNET_API_KEY. Set it in backend/.env to access real-time APMC arrivals across India.'
+      note: 'Live mandi prices require AGMARKNET_API_KEY. KrishiDrive never manufactures fake prices when unconfigured.'
     };
   }
 
-  // 1. If API key is configured, query official data.gov.in resource
+  // Build query string for data.gov.in
   const params = new URLSearchParams({
-    'api-key': API_KEY,
+    'api-key': apiKey,
     format: 'json',
     limit: String(lim),
     offset: String(off)
   });
-    if (commodity) params.set('filters[commodity]', commodity);
-    if (state) params.set('filters[state]', state);
-    if (district) params.set('filters[district]', district);
-    if (market) params.set('filters[market]', market);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    try {
-      const res = await fetch(`${BASE_URL}/${RESOURCE_ID}?${params.toString()}`, { signal: controller.signal });
-      if (res.ok) {
-        const data = await res.json();
-        const rawRecords = Array.isArray(data.records) ? data.records : [];
-        const value = {
-          available: true,
-          configured: true,
-          source: 'Agmarknet via data.gov.in (Live Stream)',
-          dataset: `https://api.data.gov.in/resource/${RESOURCE_ID}`,
-          fetched_at: new Date().toISOString(),
-          last_updated: rawRecords[0]?.arrival_date || null,
-          count: rawRecords.length,
-          total: numberOrNull(data.total) ?? rawRecords.length,
-          offset: off,
-          limit: lim,
-          filters: { commodity: commodity || null, state: state || null, district: district || null, market: market || null },
-          records: rawRecords.map(normaliseRecord),
-          note: 'Prices are as reported by APMC markets to Agmarknet. Modal price is the most common wholesale transaction price.'
-        };
-        cache.set(key, { at: Date.now(), value });
-        return { ...value, cached: false };
+  if (filterCommodity) params.set('filters[commodity]', filterCommodity);
+  if (filterState) params.set('filters[state]', filterState);
+  if (filterDistrict) params.set('filters[district]', filterDistrict);
+  if (filterMarket) params.set('filters[market]', filterMarket);
+
+  const requestUrl = `${BASE_URL}/${RESOURCE_ID}?${params.toString()}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const res = await fetch(requestUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'KrishiDrive-AgriPlatform/2.1'
       }
-    } catch (err) {
-      console.warn('data.gov.in query failed:', err.message);
-    } finally {
-      clearTimeout(timer);
+    });
+
+    const status = res.status;
+    const rawText = await res.text();
+    let json = null;
+    try {
+      json = JSON.parse(rawText);
+    } catch {
+      json = null;
     }
 
-  return {
-    available: false,
-    configured: true,
-    source: 'Agmarknet via data.gov.in',
-    reason: 'Upstream data.gov.in API is currently unreachable. Please retry shortly.',
-    records: []
-  };
+    if (status === 401 || status === 403 || json?.error?.includes?.('not authorised') || json?.error?.includes?.('Authorisation')) {
+      return {
+        available: false,
+        configured: true,
+        error_type: 'invalid_key',
+        source: 'Agmarknet via data.gov.in',
+        resource_id: RESOURCE_ID,
+        reason: 'The configured AGMARKNET_API_KEY was rejected by data.gov.in ("Key not authorised"). Please verify the key in backend/.env.',
+        records: [],
+        count: 0,
+        total: 0
+      };
+    }
+
+    if (status === 429) {
+      return {
+        available: false,
+        configured: true,
+        error_type: 'rate_limited',
+        source: 'Agmarknet via data.gov.in',
+        resource_id: RESOURCE_ID,
+        reason: 'data.gov.in rate limit exceeded. Please wait a moment before querying mandi prices again.',
+        records: [],
+        count: 0,
+        total: 0
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        available: false,
+        configured: true,
+        error_type: 'upstream_error',
+        source: 'Agmarknet via data.gov.in',
+        resource_id: RESOURCE_ID,
+        reason: `data.gov.in responded with HTTP ${status}: ${json?.error || json?.message || 'Upstream service error'}`,
+        records: [],
+        count: 0,
+        total: 0
+      };
+    }
+
+    const rawRecords = Array.isArray(json?.records) ? json.records : [];
+    const parsedRecords = rawRecords.map(normaliseRecord).filter(Boolean);
+    const totalCount = parseNumber(json?.total) ?? parsedRecords.length;
+
+    // Determine the latest arrival date from the dataset
+    const dates = parsedRecords.map((r) => r.arrival_date).filter(Boolean).sort().reverse();
+    const latestArrivalDate = dates[0] || null;
+
+    const result = {
+      available: true,
+      configured: true,
+      source: 'Agmarknet via data.gov.in (Official Daily Stream)',
+      resource_id: RESOURCE_ID,
+      dataset_url: `https://data.gov.in/resource/${RESOURCE_ID}`,
+      fetched_at: new Date().toISOString(),
+      last_updated: latestArrivalDate,
+      count: parsedRecords.length,
+      total: totalCount,
+      offset: off,
+      limit: lim,
+      filters: {
+        commodity: filterCommodity || null,
+        state: filterState || null,
+        district: filterDistrict || null,
+        market: filterMarket || null
+      },
+      records: parsedRecords,
+      note: 'Prices are as officially reported by APMC mandis to the Ministry of Agriculture Agmarknet portal. Modal price is the most frequent transaction price per quintal (100 kg).'
+    };
+
+    // Store in cache
+    if (cache.size >= MAX_CACHE_ENTRIES) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey) cache.delete(oldestKey);
+    }
+    cache.set(cacheKey, { at: Date.now(), value: result });
+
+    return { ...result, cached: false };
+  } catch (err) {
+    const isTimeout = err.name === 'AbortError';
+    return {
+      available: false,
+      configured: true,
+      error_type: isTimeout ? 'timeout' : 'network_error',
+      source: 'Agmarknet via data.gov.in',
+      resource_id: RESOURCE_ID,
+      reason: isTimeout
+        ? 'data.gov.in API request timed out after 12 seconds. The government portal may be under high load.'
+        : `Network connection error reaching data.gov.in: ${err.message}`,
+      records: [],
+      count: 0,
+      total: 0
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
- * KrishiDrive 3.0: "Where Should I Sell My Crop?" Decision Intelligence Engine.
+ * "Where Should I Sell My Crop?" Decision Intelligence Engine.
  *
- * Compares all available APMC mandis for a given commodity, calculates real OSRM road
- * distance, transit duration, freight transport costs, and computes NET REALIZATION.
+ * Compares actual available modal prices across APMC mandis for a commodity,
+ * calculates road distance via OSRM, transit durations, vehicle transport cost,
+ * and derives real Net Financial Realization (Gross Revenue - Freight Cost).
  */
 async function recommendMandiForSale({ commodity = 'Tomato', quantityKg = 5000, originLocation = 'Nashik' } = {}) {
   const normCommodity = String(commodity).trim();
   const qtyKg = Math.max(100, Number(quantityKg) || 1000);
-  const qtyQuintals = qtyKg / 100;
+  const qtyQuintals = qtyKg / 100; // 1 quintal = 100 kg
 
-  // 1. Get all markets for this commodity
+  // Fetch actual prices for the commodity
   const marketData = await getPrices({ commodity: normCommodity, limit: 100 });
-  const records = marketData.records || [];
 
-  if (!records.length) {
+  if (!marketData.available || !marketData.records || marketData.records.length === 0) {
     return {
-      success: false,
+      available: false,
+      configured: isConfigured(),
       commodity: normCommodity,
       quantity_kg: qtyKg,
-      message: `No APMC market data found for commodity "${normCommodity}". Try searching for Tomato, Onion, Wheat, Rice, Cotton, Soybean, or Potato.`
+      reason: marketData.reason || `No actual APMC market arrivals found for "${normCommodity}". Confirm commodity name or check data.gov.in status.`,
+      markets: []
     };
   }
 
-  // 2. Select vehicle tier based on payload size
+  // Deduplicate by market: pick the record with highest modal price or latest arrival
+  const marketMap = new Map();
+  for (const rec of marketData.records) {
+    if (!rec.market || !rec.modal_price) continue;
+    const key = `${rec.market}-${rec.state}`.toLowerCase();
+    const existing = marketMap.get(key);
+    if (!existing || (rec.modal_price > existing.modal_price)) {
+      marketMap.set(key, rec);
+    }
+  }
+
+  const uniqueMarkets = Array.from(marketMap.values());
+  if (uniqueMarkets.length === 0) {
+    return {
+      available: false,
+      configured: true,
+      commodity: normCommodity,
+      quantity_kg: qtyKg,
+      reason: `No valid modal prices reported for "${normCommodity}" across active mandis.`,
+      markets: []
+    };
+  }
+
+  // Select freight rate per km based on payload class
   let vehicleType = 'Tempo (3-Ton)';
   let ratePerKm = 22; // INR per km
   let baseHandling = 400; // INR loading/unloading
@@ -214,14 +340,15 @@ async function recommendMandiForSale({ commodity = 'Tomato', quantityKg = 5000, 
     baseHandling = 300;
   }
 
-  // 3. Evaluate each market
-  const marketEvaluations = await Promise.all(records.map(async (rec) => {
-    let distanceKm = 150;
-    let durationHours = 3.5;
+  // Evaluate each market with real road distance
+  const evaluated = await Promise.all(uniqueMarkets.slice(0, 20).map(async (rec) => {
+    let distanceKm = 120;
+    let durationHours = 2.8;
     let routingSource = 'haversine_fallback';
 
     try {
-      const routing = await routePlaces(originLocation, rec.district || rec.market);
+      const destinationStr = rec.market ? `${rec.market}, ${rec.district || rec.state}` : rec.district;
+      const routing = await routePlaces(originLocation, destinationStr);
       if (routing?.routes?.[0]) {
         distanceKm = routing.routes[0].distance_km;
         durationHours = routing.routes[0].duration_hours;
@@ -232,38 +359,44 @@ async function recommendMandiForSale({ commodity = 'Tomato', quantityKg = 5000, 
     }
 
     const grossRevenue = Math.round(rec.modal_price * qtyQuintals);
-    const transportCost = Math.round(distanceKm * ratePerKm + baseHandling);
-    const netRealization = Math.max(0, grossRevenue - transportCost);
+    const freightCost = Math.round(distanceKm * ratePerKm + baseHandling);
+    const netRealization = Math.max(0, grossRevenue - freightCost);
     const netRatePerQuintal = Math.round((netRealization / qtyQuintals) * 10) / 10;
     const profitMarginPercent = grossRevenue > 0 ? Math.round((netRealization / grossRevenue) * 100) : 0;
 
     return {
+      name: rec.market,
       market: rec.market,
       district: rec.district,
       state: rec.state,
-      modal_price_quintal: rec.modal_price,
-      min_price_quintal: rec.min_price,
-      max_price_quintal: rec.max_price,
+      variety: rec.variety,
+      modal_price: rec.modal_price,
+      min_price: rec.min_price,
+      max_price: rec.max_price,
+      arrival_date: rec.arrival_date,
       distance_km: distanceKm,
       transit_hours: durationHours,
       routing_source: routingSource,
-      gross_revenue_inr: grossRevenue,
-      estimated_transport_cost_inr: transportCost,
+      freight_cost: freightCost,
+      estimated_transport_cost_inr: freightCost,
+      gross_revenue: grossRevenue,
+      net_realization: netRealization,
       net_realization_inr: netRealization,
-      net_rate_per_quintal_inr: netRatePerQuintal,
-      profit_margin_percent: profitMarginPercent,
-      arrival_date: rec.arrival_date
+      net_rate_per_quintal: netRatePerQuintal,
+      profit_margin_percent: profitMarginPercent
     };
   }));
 
   // Sort descending by net profit realization
-  marketEvaluations.sort((a, b) => b.net_realization_inr - a.net_realization_inr);
+  evaluated.sort((a, b) => b.net_realization - a.net_realization);
 
-  const bestMarket = marketEvaluations[0];
-  const nearestMarket = [...marketEvaluations].sort((a, b) => a.distance_km - b.distance_km)[0];
-  const netAdvantage = bestMarket.net_realization_inr - nearestMarket.net_realization_inr;
+  const winner = evaluated[0];
+  const nearest = [...evaluated].sort((a, b) => a.distance_km - b.distance_km)[0];
+  const netAdvantage = winner.net_realization - nearest.net_realization;
 
   return {
+    available: true,
+    configured: true,
     success: true,
     commodity: normCommodity,
     quantity_kg: qtyKg,
@@ -271,20 +404,35 @@ async function recommendMandiForSale({ commodity = 'Tomato', quantityKg = 5000, 
     origin_location: originLocation,
     recommended_vehicle: vehicleType,
     freight_rate_per_km: `₹${ratePerKm}/km`,
-    best_market: bestMarket,
-    nearest_market: nearestMarket,
+    winner: {
+      name: winner.name,
+      advantage: Math.max(0, netAdvantage),
+      modal_price: winner.modal_price,
+      distance_km: winner.distance_km,
+      net_realization: winner.net_realization
+    },
+    best_market: winner,
+    nearest_market: nearest,
     net_advantage_inr: Math.max(0, netAdvantage),
     net_advantage_explanation: netAdvantage > 0
-      ? `Selling at ${bestMarket.market} yields ₹${netAdvantage.toLocaleString()} more net profit than your nearest market (${nearestMarket.market}), even after accounting for higher transportation freight.`
-      : `Your nearest market (${nearestMarket.market}) provides the optimal net financial realization after considering fuel and transport costs.`,
-    ranked_markets: marketEvaluations
+      ? `Selling at ${winner.name} yields ₹${netAdvantage.toLocaleString('en-IN')} more net profit than your nearest market (${nearest.name}), even after factoring in higher transportation costs.`
+      : `Your nearest market (${nearest.name}) provides the highest net profit after fuel and freight deductions.`,
+    markets: evaluated,
+    ranked_markets: evaluated
   };
+}
+
+function clearCache() {
+  cache.clear();
 }
 
 module.exports = {
   getPrices,
   isConfigured,
   recommendMandiForSale,
+  normaliseRecord,
+  normalizeDate,
+  clearCache,
   RESOURCE_ID,
-  BASELINE_MANDI_RECORDS
+  BASE_URL
 };

@@ -561,6 +561,109 @@ test('live integrations report real state', async (t) => {
     assert.match(prices.data.reason, /AGMARKNET_API_KEY/);
     assert.deepEqual(prices.data.records, []);
   });
+
+  await t.test('GET /api/mandi-prices supports guest access and filter parameters', async () => {
+    const guestRes = await request('GET', '/api/mandi-prices?commodity=Tomato&state=Maharashtra&district=Nashik&market=Lasalgaon&limit=10&offset=0');
+    assert.equal(guestRes.status, 200);
+    assert.equal(guestRes.data.source, 'Agmarknet via data.gov.in');
+    assert.equal(guestRes.data.configured, false);
+    assert.equal(guestRes.data.available, false);
+    assert.deepEqual(guestRes.data.records, []);
+
+    // Filter validation: rejects excessive length
+    const longParam = 'X'.repeat(85);
+    const badRes = await request('GET', `/api/mandi-prices?commodity=${longParam}`);
+    assert.equal(badRes.status, 400);
+  });
+
+  await t.test('normaliseRecord accurately parses Agmarknet data.gov.in format', () => {
+    const { normaliseRecord, normalizeDate } = require('../services/market');
+
+    // Date normalization (DD/MM/YYYY to YYYY-MM-DD)
+    assert.equal(normalizeDate('09/11/2026'), '2026-11-09');
+    assert.equal(normalizeDate('2026-11-09'), '2026-11-09');
+
+    // Sample payload matching data.gov.in Agmarknet resource 9ef84268-d588-465a-a308-a864a43d0070
+    const raw = {
+      State: 'Maharashtra',
+      District: 'Nashik',
+      Market: 'Lasalgaon',
+      Commodity: 'Tomato',
+      Variety: 'Hybrid',
+      Grade: 'FAQ',
+      Arrival_Date: '09/11/2026',
+      Min_Price: '1,500',
+      Max_Price: '2,800',
+      Modal_Price: '2,200'
+    };
+
+    const parsed = normaliseRecord(raw);
+    assert.equal(parsed.commodity, 'Tomato');
+    assert.equal(parsed.market, 'Lasalgaon');
+    assert.equal(parsed.district, 'Nashik');
+    assert.equal(parsed.state, 'Maharashtra');
+    assert.equal(parsed.variety, 'Hybrid');
+    assert.equal(parsed.min_price, 1500);
+    assert.equal(parsed.max_price, 2800);
+    assert.equal(parsed.modal_price, 2200);
+    assert.equal(parsed.price_range, 1300);
+    assert.equal(parsed.arrival_date, '2026-11-09');
+    assert.equal(parsed.unit, 'INR per quintal');
+  });
+
+  await t.test('POST /api/mandi/where-to-sell handles missing market data honestly', async () => {
+    const res = await request('POST', '/api/mandi/where-to-sell', {
+      body: {
+        commodity: 'Tomato',
+        quantity_kg: 3000,
+        origin_location: 'Nashik'
+      }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.available, false);
+    assert.equal(res.data.commodity, 'Tomato');
+    assert.match(res.data.reason, /AGMARKNET_API_KEY/);
+    assert.deepEqual(res.data.markets, []);
+  });
+
+  await t.test('decision intelligence compares actual modal prices and derives net profit realization', async () => {
+    const originalApiKey = process.env.AGMARKNET_API_KEY;
+    const originalFetch = global.fetch;
+    process.env.AGMARKNET_API_KEY = 'test_regression_key';
+
+    const sampleGovRecords = [
+      { Market: 'Lasalgaon', District: 'Nashik', State: 'Maharashtra', Commodity: 'Tomato', Modal_Price: '2200', Min_Price: '1600', Max_Price: '2600', Arrival_Date: '09/11/2026' },
+      { Market: 'Vashi APMC', District: 'Thane', State: 'Maharashtra', Commodity: 'Tomato', Modal_Price: '2900', Min_Price: '2200', Max_Price: '3400', Arrival_Date: '09/11/2026' }
+    ];
+
+    global.fetch = async (url) => {
+      if (String(url).includes('data.gov.in')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ records: sampleGovRecords, total: 2 })
+        };
+      }
+      return originalFetch(url);
+    };
+
+    try {
+      const { recommendMandiForSale, clearCache } = require('../services/market');
+      clearCache();
+      const rec = await recommendMandiForSale({ commodity: 'Tomato', quantityKg: 5000, originLocation: 'Nashik' });
+      assert.equal(rec.success, true);
+      assert.equal(rec.winner.name, 'Vashi APMC');
+      assert.ok(rec.winner.modal_price >= 2900);
+      assert.ok(rec.winner.advantage > 0);
+      assert.equal(rec.markets.length, 2);
+      assert.ok(rec.net_advantage_explanation.includes('Vashi APMC'));
+    } finally {
+      process.env.AGMARKNET_API_KEY = originalApiKey;
+      global.fetch = originalFetch;
+      const { clearCache } = require('../services/market');
+      clearCache();
+    }
+  });
 });
 
 test('support ticket lifecycle is owner-scoped and admin-governed', async (t) => {

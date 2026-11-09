@@ -186,6 +186,22 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function optionalAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return next();
+  }
+  try {
+    const token   = header.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET_ACTUAL, { algorithms: ['HS256'] });
+    const user    = userOps.findByUsername(decoded.username);
+    if (user) req.user = userOps.safe(user);
+  } catch {
+    // Guest access fallback
+  }
+  next();
+}
+
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -1259,11 +1275,11 @@ async function mandiHandler(req, res) {
   }
 }
 
-app.get('/api/mandi-prices', authMiddleware, mandiHandler);
-app.get('/api/market/prices', authMiddleware, mandiHandler);
+app.get('/api/mandi-prices', optionalAuth, mandiHandler);
+app.get('/api/market/prices', optionalAuth, mandiHandler);
 
 // ─── WHERE SHOULD I SELL MY CROP? (KrishiDrive 3.0 Market Intelligence) ────────
-app.post('/api/mandi/where-to-sell', authMiddleware, async (req, res) => {
+app.post('/api/mandi/where-to-sell', optionalAuth, async (req, res) => {
   const commodity = req.body.commodity;
   const quantity_kg = req.body.quantity_kg ?? req.body.quantityKg;
   const origin_location = req.body.origin_location ?? req.body.originLocation;
@@ -1272,9 +1288,11 @@ app.post('/api/mandi/where-to-sell', authMiddleware, async (req, res) => {
     const analysis = await recommendMandiForSale({
       commodity,
       quantityKg: quantity_kg,
-      originLocation: origin_location || req.user.village || 'Nashik'
+      originLocation: origin_location || req.user?.village || 'Nashik'
     });
-    auditOps.log('mandi_recommendation', req.user.username, { commodity, quantity_kg, origin: origin_location }, req.ip);
+    if (req.user?.username) {
+      auditOps.log('mandi_recommendation', req.user.username, { commodity, quantity_kg, origin: origin_location }, req.ip);
+    }
     res.json(analysis);
   } catch (err) {
     res.status(500).json({ detail: `Market intelligence error: ${err.message}` });

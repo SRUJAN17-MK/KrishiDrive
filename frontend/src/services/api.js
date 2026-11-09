@@ -169,6 +169,13 @@ export const api = {
         if (value !== undefined && value !== null && String(value).trim() !== '') query.set(key, value)
       })
       return api.get(`/market/prices${query.toString() ? `?${query}` : ''}`)
+    },
+    mandiPrices: (params = {}) => {
+      const query = new URLSearchParams()
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).trim() !== '') query.set(key, value)
+      })
+      return api.get(`/mandi-prices${query.toString() ? `?${query}` : ''}`)
     }
   },
   notifications: {
