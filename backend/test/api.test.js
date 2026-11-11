@@ -74,6 +74,7 @@ before(async () => {
   server = spawn(process.execPath, [SERVER_ENTRY], {
     env: {
       ...process.env,
+      NODE_ENV: 'test',
       PORT: String(port),
       DATA_DIR: dataDir,
       UPLOADS_DIR: uploadsDir,
@@ -836,6 +837,380 @@ test('admin audit trail is filterable, structured and redacted', async (t) => {
     assert.equal(payload.includes('delivery_otp'), false);
     assert.equal(payload.includes('"password"'), false);
     assert.equal(payload.includes('"token"'), false);
+  });
+});
+
+test('KrishiDrive v2.2.0 - Role-Based Auth and Driver Permit Verification', async (t) => {
+  const admin = await tokenFor('admin');
+  const farmer = await tokenFor('farmer1');
+  const driver = await tokenFor('driver1');
+  const ts = Date.now();
+
+  await t.test('farmer registration validates fields and redirects to farmer dashboard', async () => {
+    const res = await request('POST', '/api/auth/register-farmer', {
+      body: {
+        full_name: 'Rameshwar Patil',
+        phone: '9876543210',
+        email: `ramesh_${ts}@krishidrive.in`,
+        password: 'securePassword123',
+        address: 'Dindori, Nashik, Maharashtra'
+      }
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.user.role, 'farmer');
+    assert.equal(res.data.user.status, 'verified');
+    assert.equal(res.data.redirect_to, '/farmer');
+    assert.ok(res.data.access_token);
+
+    // Rejects duplicate email
+    const dupRes = await request('POST', '/api/auth/register-farmer', {
+      body: {
+        full_name: 'Duplicate Patil',
+        phone: '9876543210',
+        email: `ramesh_${ts}@krishidrive.in`,
+        password: 'securePassword123',
+        address: 'Dindori, Nashik'
+      }
+    });
+    assert.ok([400, 409].includes(dupRes.status));
+
+    // Rejects missing required address
+    const missingRes = await request('POST', '/api/auth/register-farmer', {
+      body: {
+        full_name: 'Patil Incomplete',
+        phone: '9876543210',
+        email: `incomplete_${ts}@krishidrive.in`,
+        password: 'securePassword123'
+      }
+    });
+    assert.equal(missingRes.status, 400);
+  });
+
+  await t.test('driver registration collects permit, validates expiry, and defaults to pending verification', async () => {
+    // 1. Rejects permit with expiry date <= issue date
+    const badDateRes = await request('POST', '/api/auth/register-driver', {
+      body: {
+        full_name: 'Vikas Shinde',
+        phone: '9123456789',
+        email: `vikas_bad_${ts}@krishidrive.in`,
+        password: 'driverPass123',
+        address: 'Pimpalgaon, Nashik',
+        vehicle_reg_number: `MH-15-TK-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_type: 'Truck (10-Ton)',
+        vehicle_capacity: 10000,
+        driving_licence_number: `DL-MH-15-${ts}`,
+        permit_type: 'state',
+        issuing_state: 'Maharashtra',
+        permit_number: `ST-MH-${ts}`,
+        issuing_authority: 'RTO Nashik',
+        issue_date: '2026-01-01',
+        expiry_date: '2025-12-31' // EXPIRED / INVALID
+      }
+    });
+    assert.equal(badDateRes.status, 400);
+    assert.match(badDateRes.data.detail, /expiry_date/);
+
+    // 2. Rejects state permit without issuing_state
+    const noStateRes = await request('POST', '/api/auth/register-driver', {
+      body: {
+        full_name: 'Vikas Shinde',
+        phone: '9123456789',
+        email: `vikas_nostate_${ts}@krishidrive.in`,
+        password: 'driverPass123',
+        address: 'Pimpalgaon, Nashik',
+        vehicle_reg_number: `MH-15-TK-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_type: 'Truck (10-Ton)',
+        vehicle_capacity: 10000,
+        driving_licence_number: `DL-MH-15-${ts}`,
+        permit_type: 'state',
+        permit_number: `ST-MH-${ts}`,
+        issuing_authority: 'RTO Nashik',
+        issue_date: '2026-01-01',
+        expiry_date: '2029-01-01'
+      }
+    });
+    assert.equal(noStateRes.status, 400);
+    assert.match(noStateRes.data.detail, /Issuing state is required/);
+
+    // 3. Valid State Permit Driver Registration
+    const validStateRes = await request('POST', '/api/auth/register-driver', {
+      body: {
+        full_name: 'Vikas Shinde',
+        phone: '9123456789',
+        email: `vikas_state_${ts}@krishidrive.in`,
+        password: 'driverPass123',
+        address: 'Pimpalgaon, Nashik',
+        vehicle_reg_number: `MH-15-TK-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_type: 'Truck (10-Ton)',
+        vehicle_capacity: 10000,
+        driving_licence_number: `DL-MH-15-${ts}`,
+        permit_type: 'state',
+        issuing_state: 'Maharashtra',
+        permit_number: `ST-MH-${ts}`,
+        issuing_authority: 'RTO Nashik',
+        issue_date: '2026-01-01',
+        expiry_date: '2029-01-01',
+        document_base64: 'data:application/pdf;base64,JVBERi0xLjQKJVRlc3QgRG9jdW1lbnQ='
+      }
+    });
+    assert.equal(validStateRes.status, 201);
+    assert.equal(validStateRes.data.user.role, 'driver');
+    assert.equal(validStateRes.data.verification_status, 'pending');
+    assert.equal(validStateRes.data.user.verified, false);
+    assert.ok(validStateRes.data.permit_id);
+
+    // 4. Valid National Permit Driver Registration
+    const validNationalRes = await request('POST', '/api/auth/register-driver', {
+      body: {
+        full_name: 'Harpreet Singh',
+        phone: '9811122233',
+        email: `harpreet_${ts}@krishidrive.in`,
+        password: 'driverPass123',
+        address: 'Ludhiana, Punjab',
+        vehicle_reg_number: `PB-10-TR-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_type: 'Truck (10-Ton)',
+        vehicle_capacity: 12000,
+        driving_licence_number: `DL-PB-10-${ts}`,
+        permit_type: 'national',
+        permit_number: `NP-IND-${ts}`,
+        issuing_authority: 'Transport Dept Punjab',
+        auth_details: 'All India Goods Carrier Permit Form 47 Valid across all States',
+        issue_date: '2026-01-01',
+        expiry_date: '2031-01-01'
+      }
+    });
+    assert.equal(validNationalRes.status, 201);
+    assert.equal(validNationalRes.data.user.role, 'driver');
+    assert.equal(validNationalRes.data.verification_status, 'pending');
+  });
+
+  await t.test('dedicated admin login allows admin and strictly blocks farmers and drivers with 403', async () => {
+    // 1. Admin login succeeds
+    const adminRes = await request('POST', '/api/auth/admin-login', {
+      body: { username: 'admin', password: 'demo123' }
+    });
+    assert.equal(adminRes.status, 200);
+    assert.equal(adminRes.data.user.role, 'admin');
+    assert.equal(adminRes.data.redirect_to, '/admin');
+
+    // 2. Farmer trying to log into admin portal is blocked with 403
+    const farmerTryAdmin = await request('POST', '/api/auth/admin-login', {
+      body: { username: 'farmer1', password: 'demo123' }
+    });
+    assert.equal(farmerTryAdmin.status, 403);
+    assert.match(farmerTryAdmin.data.detail, /Administrator privileges required/);
+
+    // 3. Driver trying to log into admin portal is blocked with 403
+    const driverTryAdmin = await request('POST', '/api/auth/admin-login', {
+      body: { username: 'driver1', password: 'demo123' }
+    });
+    assert.equal(driverTryAdmin.status, 403);
+    assert.match(driverTryAdmin.data.detail, /Administrator privileges required/);
+
+    // 4. Wrong password returns 401
+    const badPass = await request('POST', '/api/auth/admin-login', {
+      body: { username: 'admin', password: 'wrongPassword' }
+    });
+    assert.equal(badPass.status, 401);
+  });
+
+  await t.test('role-scoped logins enforce role boundaries', async () => {
+    // Farmer portal allows farmer
+    const farmerRes = await request('POST', '/api/auth/farmer-login', {
+      body: { username: 'farmer1', password: 'demo123' }
+    });
+    assert.equal(farmerRes.status, 200);
+    assert.equal(farmerRes.data.redirect_to, '/farmer');
+
+    // Farmer portal rejects driver with 403
+    const driverOnFarmer = await request('POST', '/api/auth/farmer-login', {
+      body: { username: 'driver1', password: 'demo123' }
+    });
+    assert.equal(driverOnFarmer.status, 403);
+
+    // Driver portal allows driver
+    const driverRes = await request('POST', '/api/auth/driver-login', {
+      body: { username: 'driver1', password: 'demo123' }
+    });
+    assert.equal(driverRes.status, 200);
+    assert.equal(driverRes.data.redirect_to, '/driver');
+    assert.equal(driverRes.data.verification_status, 'approved');
+
+    // Driver portal rejects farmer with 403
+    const farmerOnDriver = await request('POST', '/api/auth/driver-login', {
+      body: { username: 'farmer1', password: 'demo123' }
+    });
+    assert.equal(farmerOnDriver.status, 403);
+  });
+
+  await t.test('admin driver verification: review, documents, correction, rejection and approval', async () => {
+    // Register a new driver specifically for verification lifecycle testing
+    const driverUser = `verify_target_${ts}`;
+    const regRes = await request('POST', '/api/auth/register-driver', {
+      body: {
+        username: driverUser,
+        full_name: 'Verification Target Driver',
+        phone: '9844455566',
+        email: `${driverUser}@krishidrive.in`,
+        password: 'password123',
+        address: 'Nashik Industrial Area',
+        vehicle_reg_number: `MH-15-VF-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_type: 'Tempo (3-Ton)',
+        vehicle_capacity: 3000,
+        driving_licence_number: `DL-VF-${ts}`,
+        permit_type: 'state',
+        issuing_state: 'Maharashtra',
+        permit_number: `PMT-VF-${ts}`,
+        issuing_authority: 'RTO Nashik',
+        issue_date: '2026-01-10',
+        expiry_date: '2028-01-10'
+      }
+    });
+    assert.equal(regRes.status, 201);
+    const permitId = regRes.data.permit_id;
+    const targetDriverToken = regRes.data.access_token;
+
+    // 1. Admin lists driver verifications and sees the new pending driver
+    const verifList = await request('GET', '/api/admin/driver-verifications?status=pending', { token: admin });
+    assert.equal(verifList.status, 200);
+    const found = verifList.data.find(d => d.username === driverUser);
+    assert.ok(found, 'New driver should be listed in pending verifications');
+    assert.equal(found.verification_status, 'pending');
+
+    // 2. Private permit document access: admin and owner driver can access, other farmer gets 403
+    const adminDoc = await request('GET', `/api/admin/driver-permits/${permitId}/document`, { token: admin });
+    assert.equal(adminDoc.status, 200);
+
+    const ownerDoc = await request('GET', `/api/admin/driver-permits/${permitId}/document`, { token: targetDriverToken });
+    assert.equal(ownerDoc.status, 200);
+
+    const strangerDoc = await request('GET', `/api/admin/driver-permits/${permitId}/document`, { token: farmer });
+    assert.equal(strangerDoc.status, 403);
+
+    // 3. Admin requests correction
+    const correctRes = await request('POST', `/api/admin/driver-verifications/${permitId}/request-correction`, {
+      token: admin,
+      body: { note: 'Front page of permit stamp is blurred. Please upload clear scan.' }
+    });
+    assert.equal(correctRes.status, 200);
+    assert.equal(correctRes.data.status, 'correction_requested');
+
+    // 4. Driver checks self-service permit status
+    const driverPermitStatus = await request('GET', '/api/driver/my-permit', { token: targetDriverToken });
+    assert.equal(driverPermitStatus.status, 200);
+    assert.equal(driverPermitStatus.data.profile.verification_status, 'correction_requested');
+    assert.equal(driverPermitStatus.data.profile.correction_note, 'Front page of permit stamp is blurred. Please upload clear scan.');
+
+    // 5. Driver submits corrected permit
+    const reuploadRes = await request('POST', '/api/driver/permit-correction', {
+      token: targetDriverToken,
+      body: {
+        permit_number: `PMT-VF-${ts}-REV`,
+        permit_type: 'state',
+        issuing_state: 'Maharashtra',
+        issuing_authority: 'RTO Nashik',
+        issue_date: '2026-01-10',
+        expiry_date: '2028-01-10',
+        document_base64: 'data:application/pdf;base64,JVBERi0xLjQKJVRlc3QgUmVzdWJtaXR0ZWQ='
+      }
+    });
+    assert.equal(reuploadRes.status, 200);
+    assert.equal(reuploadRes.data.permit.status, 'pending');
+    const newPermitId = reuploadRes.data.permit.id;
+
+    // 6. Admin rejects with reason
+    const rejectRes = await request('POST', `/api/admin/driver-verifications/${newPermitId}/reject`, {
+      token: admin,
+      body: { reason: 'Permit number does not match Parivahan Vahan records.' }
+    });
+    assert.equal(rejectRes.status, 200);
+    assert.equal(rejectRes.data.status, 'rejected');
+
+    // 7. Admin approves permit and driver account
+    const approveRes = await request('POST', `/api/admin/driver-verifications/${newPermitId}/approve`, {
+      token: admin,
+      body: { notes: 'Verified manually through Parivahan portal.' }
+    });
+    assert.equal(approveRes.status, 200);
+    assert.equal(approveRes.data.status, 'approved');
+
+    // 8. Admin suspends driver account
+    const suspendRes = await request('POST', `/api/admin/drivers/${driverUser}/status`, {
+      token: admin,
+      body: { status: 'suspended', is_active: false, reason: 'Pending annual insurance renewal' }
+    });
+    assert.equal(suspendRes.status, 200);
+    assert.equal(suspendRes.data.status, 'suspended');
+    assert.equal(suspendRes.data.is_active, false);
+
+    // 9. Admin reinstates driver account
+    const reinstateRes = await request('POST', `/api/admin/drivers/${driverUser}/status`, {
+      token: admin,
+      body: { status: 'approved', is_active: true, reason: 'Insurance renewed' }
+    });
+    assert.equal(reinstateRes.status, 200);
+    assert.equal(reinstateRes.data.status, 'approved');
+  });
+
+  await t.test('job acceptance blocks pending and expired drivers and allows verified drivers', async () => {
+    // 1. Create a transport dispatch request
+    const reqRes = await request('POST', '/api/transport/request', {
+      token: farmer,
+      body: {
+        crop: 'Fresh Cauliflower',
+        quantity: 2500,
+        unit: 'kg',
+        pickup: 'Nashik, Maharashtra',
+        destination: 'Vashi APMC, Mumbai',
+        vehicle_type: 'Tempo (3-Ton)',
+        pickup_date: '2026-03-30',
+        preferred_time: '06:00 AM'
+      }
+    });
+    assert.equal(reqRes.status, 200);
+    const transportId = reqRes.data.id;
+
+    // 2. Register an unverified pending driver
+    const pendingDriverName = `driver_pending_${ts}`;
+    const regRes = await request('POST', '/api/auth/register-driver', {
+      body: {
+        username: pendingDriverName,
+        full_name: 'Pending Driver Hauler',
+        phone: '9855566677',
+        email: `${pendingDriverName}@krishidrive.in`,
+        password: 'password123',
+        address: 'Nashik Rural',
+        vehicle_reg_number: `MH-15-PD-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_type: 'Tempo (3-Ton)',
+        vehicle_capacity: 3000,
+        driving_licence_number: `DL-PD-${ts}`,
+        permit_type: 'state',
+        issuing_state: 'Maharashtra',
+        permit_number: `ST-PD-${ts}`,
+        issuing_authority: 'RTO Nashik',
+        issue_date: '2026-01-01',
+        expiry_date: '2028-01-01'
+      }
+    });
+    assert.equal(regRes.status, 201);
+    const pendingToken = regRes.data.access_token;
+
+    // 3. Pending driver attempts to accept transport job -> 403 Forbidden!
+    const pendingAccept = await request('POST', '/api/transport/accept', {
+      token: pendingToken,
+      body: { request_id: transportId }
+    });
+    assert.equal(pendingAccept.status, 403);
+    assert.match(pendingAccept.data.detail, /pending admin verification/);
+
+    // 4. Verified driver1 with approved permit accepts job -> 200 OK
+    const verifiedAccept = await request('POST', '/api/transport/accept', {
+      token: driver,
+      body: { request_id: transportId }
+    });
+    assert.equal(verifiedAccept.status, 200);
+    assert.equal(verifiedAccept.data.request.status, 'matched');
+    assert.equal(verifiedAccept.data.trip.driver, 'driver1');
   });
 });
 

@@ -64,13 +64,24 @@ function migrateFromJson({ archive = true, quiet = false } = {}) {
     const userEntries = Array.isArray(users)
       ? users.map(u => [u.username, u])
       : Object.entries(users);
+
+    // --- Pass 1: Insert all users first so FK constraints are satisfied ---
+    const userMeta = {}; // username -> { role, isVerified, userStatus, u }
     for (const [key, u] of userEntries) {
       const username = u.username || key;
+      const role = ['farmer', 'driver', 'admin'].includes(u.role) ? u.role : 'farmer';
+      // Treat all well-known demo accounts as fully verified
+      const DEMO_USERS = ['admin', 'farmer1', 'farmer2', 'driver1', 'driver2'];
+      const isDemo = DEMO_USERS.includes(username);
+      const isVerified = Boolean(u.verified) || isDemo;
+      const userStatus = isVerified ? 'verified' : 'pending';
+      userMeta[username] = { role, isVerified, userStatus, u };
+
       const result = insertUser.run({
         username,
         email: u.email || `${username}@krishidrive.local`,
         full_name: u.full_name || username,
-        role: ['farmer', 'driver', 'admin'].includes(u.role) ? u.role : 'farmer',
+        role,
         hashed_password: u.hashed_password || '',
         village: u.village || '',
         state: u.state || '',
@@ -80,12 +91,52 @@ function migrateFromJson({ archive = true, quiet = false } = {}) {
         vehicle_id: u.vehicle_id || null,
         rating: u.rating ?? null,
         trips_completed: u.trips_completed || 0,
-        verified: u.verified ? 1 : 0,
+        verified: isVerified ? 1 : 0,
         license_number: u.license_number || null,
         avatar: u.avatar || '',
         created_at: u.created_at || new Date().toISOString().split('T')[0]
       });
       counts.users += result.changes;
+
+      // Ensure v2.2.0 status/is_active/address columns are populated
+      try {
+        db.prepare('UPDATE users SET status = ?, is_active = 1, address = ? WHERE username = ?')
+          .run(userStatus, u.village || '', username);
+      } catch {}
+    }
+
+    // --- Pass 2: Seed v2.2.0 profiles now that all users exist ---
+    for (const [username, { role, isVerified, u }] of Object.entries(userMeta)) {
+      if (role === 'driver') {
+        try {
+          db.prepare(`
+            INSERT OR IGNORE INTO driver_profiles
+              (username, driving_licence_no, licence_expiry, verification_status, reviewed_by, reviewed_at)
+            VALUES (?, ?, '2029-12-31', ?, NULL, datetime('now'))
+          `).run(username, u.license_number || 'DL-LEGACY-001', isVerified ? 'approved' : 'pending');
+
+          if (isVerified) {
+            db.prepare(`
+              INSERT OR IGNORE INTO driver_permits
+                (id, driver_username, permit_type, permit_number, issuing_state, issuing_authority,
+                 auth_details, issue_date, expiry_date, document_filename, document_path,
+                 document_mimetype, document_size, status, reviewed_by, reviewed_at)
+              VALUES (?, ?, 'national', ?, 'Maharashtra', 'RTO Nashik',
+                      'All India Heavy Goods Carrier Authorization', '2024-01-01', '2029-12-31',
+                      'sample_permit.pdf', 'seeded_permit', 'application/pdf', 1024,
+                      'approved', NULL, datetime('now'))
+            `).run(`PMT-SEED-${username}`, username, `NP-${username.toUpperCase()}-2024`);
+          }
+        } catch {}
+      } else if (role === 'farmer') {
+        try {
+          db.prepare(`
+            INSERT OR IGNORE INTO farmer_profiles
+              (username, address, land_area_acres, main_crops)
+            VALUES (?, ?, ?, ?)
+          `).run(username, u.village || '', Number(u.farm_size) || 2, JSON.stringify(u.crops_grown || []));
+        } catch {}
+      }
     }
 
     const insertVehicle = db.prepare(`

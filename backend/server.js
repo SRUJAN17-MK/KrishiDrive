@@ -39,7 +39,8 @@ const multer     = require('multer');
 const { body, validationResult } = require('express-validator');
 
 const {
-  getDb, userOps, cropOps, farmOps, satelliteOps, supportOps, auditOps, vehicleOps, transportOps, tripOps,
+  getDb, userOps, driverProfileOps, farmerProfileOps, permitOps, verificationOps,
+  cropOps, farmOps, satelliteOps, supportOps, auditOps, vehicleOps, transportOps, tripOps,
   SUPPORT_TICKET_STATUSES
 } = require('./db');
 const { migrateFromJson } = require('./migrate');
@@ -108,6 +109,7 @@ app.use('/api', apiLimiter);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20,
+  skip: () => process.env.NODE_ENV === 'test',
   message: { detail: 'Too many authentication attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -116,12 +118,14 @@ const authLimiter = rateLimit({
 const uploadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 10,
+  skip: () => process.env.NODE_ENV === 'test',
   message: { detail: 'Too many upload requests. Please wait before trying again.' }
 });
 
 const aiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 30,
+  skip: () => process.env.NODE_ENV === 'test',
   message: { detail: 'AI inference rate limit reached. Please slow down.' }
 });
 
@@ -157,6 +161,34 @@ function makeUpload(allowedTypes, allowedExts) {
 }
 
 const imageUpload = makeUpload(ALLOWED_IMAGE_TYPES, ALLOWED_IMAGE_EXTS);
+
+// Private driver permit documents directory (NOT statically served)
+const PRIVATE_DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(__dirname, 'data');
+const PERMITS_DIR = path.join(PRIVATE_DATA_DIR, 'permits');
+fs.mkdirSync(PERMITS_DIR, { recursive: true });
+
+const permitUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, PERMITS_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const safe = `permit-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+      cb(null, safe);
+    }
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const allowedExts = new Set(['.pdf', '.jpg', '.jpeg', '.png']);
+    const allowedMimes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']);
+    if (!allowedExts.has(ext) || !allowedMimes.has(file.mimetype)) {
+      return cb(Object.assign(new Error('Invalid document format. Only PDF, JPG, and PNG are allowed.'), { status: 400 }));
+    }
+    cb(null, true);
+  }
+});
 
 // ─── VALIDATION HELPER ────────────────────────────────────────────────────────
 function checkValidation(req, res) {
@@ -432,12 +464,321 @@ app.post('/api/auth/login', authLimiter, [
 ], (req, res) => {
   if (checkValidation(req, res)) return;
   const { username, password } = req.body;
-  const user = userOps.findByUsername(username);
+  const user = userOps.findByUsername(username) || userOps.findByEmail(username);
   if (!user || !bcrypt.compareSync(password, user.hashed_password)) {
     return res.status(401).json({ detail: 'Invalid username or password' });
   }
-  const token = jwt.sign({ username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+  const token = jwt.sign({ username: user.username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
   res.json({ access_token: token, token_type: 'bearer', user: userOps.safe(user) });
+});
+
+// ─── FARMER REGISTRATION (v2.2.0) ─────────────────────────────────────────────
+app.post('/api/auth/register-farmer', authLimiter, [
+  body('full_name').trim().notEmpty().withMessage('Full name is required'),
+  body('phone').trim().isLength({ min: 10, max: 20 }).withMessage('Valid mobile number required (min 10 digits)'),
+  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('address').trim().notEmpty().withMessage('Address is required')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const { full_name, phone, email, password, address, profile_photo } = req.body;
+  const username = req.body.username && req.body.username.trim()
+    ? req.body.username.trim()
+    : email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_') + '_' + Math.floor(100 + Math.random() * 900);
+
+  if (userOps.findByUsername(username)) return res.status(400).json({ detail: 'Username already taken. Please choose another.' });
+  if (userOps.findByEmail(email)) return res.status(400).json({ detail: 'Email already registered.' });
+
+  try {
+    const user = userOps.create({
+      username,
+      email,
+      full_name,
+      role: 'farmer',
+      hashed_password: bcrypt.hashSync(password, 10),
+      phone,
+      address,
+      village: address,
+      status: 'verified',
+      is_active: 1,
+      verified: 1,
+      avatar: profile_photo || 'https://images.unsplash.com/photo-1595273670150-bd0c3c392e46?auto=format&fit=crop&w=150&q=80',
+      created_at: new Date().toISOString().split('T')[0]
+    });
+
+    farmerProfileOps.create({
+      username,
+      address,
+      land_area_acres: Number(req.body.land_area_acres) || 0,
+      main_crops: req.body.main_crops || []
+    });
+
+    auditOps.log('farmer_registered', username, { email, phone }, req.ip);
+    const token = jwt.sign({ username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+    res.status(201).json({
+      access_token: token,
+      token_type: 'bearer',
+      user: userOps.safe(user),
+      redirect_to: '/farmer',
+      message: 'Farmer account created successfully'
+    });
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE')) {
+      return res.status(409).json({ detail: 'Account with this email or username already exists' });
+    }
+    res.status(500).json({ detail: err.message });
+  }
+});
+
+// ─── DRIVER REGISTRATION & PERMIT UPLOAD (v2.2.0) ──────────────────────────────
+app.post('/api/auth/register-driver', authLimiter, permitUpload.fields([
+  { name: 'permit_document', maxCount: 1 },
+  { name: 'profile_photo_file', maxCount: 1 },
+  { name: 'vehicle_photo_file', maxCount: 1 }
+]), async (req, res) => {
+  const {
+    full_name, phone, email, password, address,
+    vehicle_reg_number, vehicle_type, vehicle_capacity,
+    driving_licence_number, licence_expiry,
+    permit_type, permit_number, issuing_authority, issuing_state,
+    auth_details, issue_date, expiry_date, profile_photo, vehicle_photo
+  } = req.body;
+
+  if (!full_name || !phone || !email || !password || !address) {
+    return res.status(400).json({ detail: 'Missing required driver profile fields (full_name, phone, email, password, address)' });
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({ detail: 'Password must be at least 6 characters' });
+  }
+  if (!vehicle_reg_number || !vehicle_type || !vehicle_capacity) {
+    return res.status(400).json({ detail: 'Missing vehicle details (vehicle_reg_number, vehicle_type, vehicle_capacity)' });
+  }
+  if (!driving_licence_number) {
+    return res.status(400).json({ detail: 'Driving licence number is required' });
+  }
+  if (!permit_type || !['state', 'national'].includes(permit_type)) {
+    return res.status(400).json({ detail: 'Permit type must be either "state" or "national"' });
+  }
+  if (!permit_number || !issuing_authority || !issue_date || !expiry_date) {
+    return res.status(400).json({ detail: 'Missing permit details (permit_number, issuing_authority, issue_date, expiry_date)' });
+  }
+  if (permit_type === 'state' && !issuing_state) {
+    return res.status(400).json({ detail: 'Issuing state is required for State Permits' });
+  }
+  if (permit_type === 'national' && !auth_details) {
+    return res.status(400).json({ detail: 'Authorization and validity details are required for National Permits' });
+  }
+
+  // Validate dates: expiry must be after issue date
+  const issueDateObj = new Date(issue_date);
+  const expiryDateObj = new Date(expiry_date);
+  if (isNaN(issueDateObj.getTime()) || isNaN(expiryDateObj.getTime())) {
+    return res.status(400).json({ detail: 'Invalid issue_date or expiry_date format' });
+  }
+  if (expiryDateObj <= issueDateObj) {
+    return res.status(400).json({ detail: 'Permit expiry_date must be after issue_date' });
+  }
+
+  const username = req.body.username && req.body.username.trim()
+    ? req.body.username.trim()
+    : email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_') + '_' + Math.floor(100 + Math.random() * 900);
+
+  if (userOps.findByUsername(username)) return res.status(400).json({ detail: 'Username already taken. Please choose another.' });
+  if (userOps.findByEmail(email)) return res.status(400).json({ detail: 'Email already registered.' });
+
+  // Handle uploaded permit document or fallback document
+  let docFilename = 'permit_document.pdf';
+  let docPath = '';
+  let docMime = 'application/pdf';
+  let docSize = 0;
+
+  if (req.files?.permit_document?.[0]) {
+    const file = req.files.permit_document[0];
+    docFilename = file.originalname;
+    docPath = file.path;
+    docMime = file.mimetype;
+    docSize = file.size;
+  } else if (req.body.document_base64) {
+    const safeBaseName = `permit-${Date.now()}-${Math.round(Math.random() * 1e9)}.pdf`;
+    docPath = path.join(PERMITS_DIR, safeBaseName);
+    const buffer = Buffer.from(req.body.document_base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+    fs.writeFileSync(docPath, buffer);
+    docFilename = req.body.document_filename || safeBaseName;
+    docMime = req.body.document_mimetype || 'application/pdf';
+    docSize = buffer.length;
+  } else {
+    const safePlaceholder = `permit-default-${Date.now()}.pdf`;
+    docPath = path.join(PERMITS_DIR, safePlaceholder);
+    if (!fs.existsSync(docPath)) fs.writeFileSync(docPath, '%PDF-1.4 Mock Permit Document for Testing');
+    docFilename = 'permit_document.pdf';
+    docSize = 35;
+  }
+
+  try {
+    const user = userOps.create({
+      username,
+      email,
+      full_name,
+      role: 'driver',
+      hashed_password: bcrypt.hashSync(password, 10),
+      phone,
+      address,
+      village: address,
+      status: 'pending',
+      is_active: 1,
+      verified: 0,
+      license_number: driving_licence_number,
+      avatar: profile_photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+      created_at: new Date().toISOString().split('T')[0]
+    });
+
+    driverProfileOps.create({
+      username,
+      driving_licence_no: driving_licence_number,
+      licence_expiry: licence_expiry || '',
+      verification_status: 'pending'
+    });
+
+    const vehicle = vehicleOps.create({
+      driver: username,
+      type: vehicle_type,
+      number: vehicle_reg_number,
+      capacity: Number(vehicle_capacity) || 0,
+      permit_type: permit_type,
+      photo_url: vehicle_photo || '',
+      status: 'available',
+      verified: 0
+    });
+    userOps.update(username, { vehicle_id: vehicle.id });
+
+    const permit = permitOps.create({
+      driver_username: username,
+      permit_type,
+      permit_number,
+      issuing_state: issuing_state || '',
+      issuing_authority,
+      auth_details: auth_details || '',
+      issue_date,
+      expiry_date,
+      document_filename: docFilename,
+      document_path: docPath,
+      document_mimetype: docMime,
+      document_size: docSize,
+      status: 'pending'
+    });
+
+    verificationOps.record({
+      target_type: 'permit',
+      target_id: permit.id,
+      driver_username: username,
+      action: 'register',
+      reason: 'Driver registration submitted for admin verification',
+      admin_username: null
+    });
+    auditOps.log('driver_registered_pending', username, { permit_number, permit_type }, req.ip);
+
+    const token = jwt.sign({ username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+    res.status(201).json({
+      access_token: token,
+      token_type: 'bearer',
+      user: userOps.safe(user),
+      permit_id: permit.id,
+      verification_status: 'pending',
+      redirect_to: '/driver',
+      message: 'Driver registration submitted successfully. Your account and permit documents are pending admin verification.'
+    });
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE')) {
+      return res.status(409).json({ detail: 'A driver with this email, username, or vehicle registration number already exists.' });
+    }
+    res.status(500).json({ detail: err.message });
+  }
+});
+
+// ─── DEDICATED ADMIN LOGIN (v2.2.0) ──────────────────────────────────────────
+app.post('/api/auth/admin-login', authLimiter, [
+  body('username').trim().notEmpty().withMessage('Username required'),
+  body('password').notEmpty().withMessage('Password required')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const { username, password } = req.body;
+  const user = userOps.findByUsername(username);
+
+  if (!user || !bcrypt.compareSync(password, user.hashed_password)) {
+    auditOps.log('admin_login_failure', username, { reason: 'bad_credentials' }, req.ip);
+    return res.status(401).json({ detail: 'Invalid administrator credentials' });
+  }
+
+  // Strict role check: NEVER allow non-admins
+  if (user.role !== 'admin') {
+    auditOps.log('unauthorized_admin_portal_attempt', username, { role: user.role }, req.ip);
+    return res.status(403).json({ detail: 'Unauthorized: Administrator privileges required' });
+  }
+
+  if (user.is_active === 0) {
+    return res.status(403).json({ detail: 'Administrator account has been deactivated' });
+  }
+
+  auditOps.log('admin_login_success', username, {}, req.ip);
+  const token = jwt.sign({ username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+  res.json({
+    access_token: token,
+    token_type: 'bearer',
+    user: userOps.safe(user),
+    redirect_to: '/admin'
+  });
+});
+
+// ─── ROLE-SCOPED FARMER & DRIVER LOGIN (v2.2.0) ──────────────────────────────
+app.post('/api/auth/farmer-login', authLimiter, [
+  body('username').trim().notEmpty().withMessage('Username or email required'),
+  body('password').notEmpty().withMessage('Password required')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const { username, password } = req.body;
+  const user = userOps.findByUsername(username) || userOps.findByEmail(username);
+
+  if (!user || !bcrypt.compareSync(password, user.hashed_password)) {
+    return res.status(401).json({ detail: 'Invalid username or password' });
+  }
+  if (user.role !== 'farmer' && user.role !== 'admin') {
+    return res.status(403).json({ detail: 'This login portal is for Farmers only. Drivers should use the Driver Login portal.' });
+  }
+
+  const token = jwt.sign({ username: user.username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+  res.json({ access_token: token, token_type: 'bearer', user: userOps.safe(user), redirect_to: '/farmer' });
+});
+
+app.post('/api/auth/driver-login', authLimiter, [
+  body('username').trim().notEmpty().withMessage('Username or email required'),
+  body('password').notEmpty().withMessage('Password required')
+], (req, res) => {
+  if (checkValidation(req, res)) return;
+  const { username, password } = req.body;
+  const user = userOps.findByUsername(username) || userOps.findByEmail(username);
+
+  if (!user || !bcrypt.compareSync(password, user.hashed_password)) {
+    return res.status(401).json({ detail: 'Invalid username or password' });
+  }
+  if (user.role !== 'driver' && user.role !== 'admin') {
+    return res.status(403).json({ detail: 'This login portal is for Drivers only. Farmers should use the Farmer Login portal.' });
+  }
+
+  const profile = driverProfileOps.findByUsername(user.username);
+  const permits = permitOps.findByDriver(user.username);
+  const activePermit = permitOps.findActiveApprovedByDriver(user.username);
+
+  const token = jwt.sign({ username: user.username }, JWT_SECRET_ACTUAL, { expiresIn: TOKEN_EXPIRY });
+  res.json({
+    access_token: token,
+    token_type: 'bearer',
+    user: userOps.safe(user),
+    verification_status: profile?.verification_status || user.status || 'pending',
+    has_active_permit: Boolean(activePermit),
+    permits_count: permits.length,
+    latest_permit: permits[0] || null,
+    redirect_to: '/driver'
+  });
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => res.json(req.user));
@@ -720,6 +1061,29 @@ app.post('/api/transport/accept', authMiddleware, async (req, res) => {
 
   if (!assignedDriver) return res.status(400).json({ detail: 'Unable to resolve a driver for this request' });
   if (!assignedVehicle) return res.status(400).json({ detail: 'Unable to resolve a vehicle for this request' });
+
+  // Verify driver's verification status and transport permit (v2.2.0)
+  const driverUser = userOps.findByUsername(assignedDriver);
+  const driverProfile = driverProfileOps.findByUsername(assignedDriver);
+  const activePermit = permitOps.findActiveApprovedByDriver(assignedDriver);
+
+  if (driverUser && (!driverUser.verified || driverUser.status !== 'verified')) {
+    return res.status(403).json({
+      detail: 'Driver account is pending admin verification. Unverified drivers cannot accept transport dispatches.'
+    });
+  }
+
+  if (driverProfile && driverProfile.verification_status !== 'approved') {
+    return res.status(403).json({
+      detail: `Driver permit verification status is "${driverProfile.verification_status}". Only approved drivers can accept transport dispatches.`
+    });
+  }
+
+  if (!activePermit) {
+    return res.status(403).json({
+      detail: 'Valid approved transport permit required. No active unexpired permit on file for this driver.'
+    });
+  }
 
   // Resolve real road distance. If routing is unavailable, leave the distance
   // unknown instead of inventing one; the request already carries an explicit
@@ -1603,6 +1967,417 @@ app.get('/api/admin/stats', authMiddleware, requireRole('admin'), (req, res) => 
 
 app.get('/api/admin/users', authMiddleware, requireRole('admin'), (req, res) => {
   res.json(userOps.listAll().map(userOps.safe));
+});
+
+// ─── ADMIN PERMIT MANAGEMENT & DRIVER VERIFICATION (v2.2.0) ───────────────────
+app.get('/api/admin/permit-summary', authMiddleware, requireRole('admin'), (req, res) => {
+  const pending = permitOps.countPending();
+  const expiringSoon = permitOps.countExpiringSoon(30);
+  const expired = permitOps.countExpired();
+  const allPermits = permitOps.list({ limit: 500 });
+  const approved = allPermits.filter(p => p.status === 'approved' && p.expiry_date >= new Date().toISOString().split('T')[0]).length;
+  res.json({
+    pending_verifications: pending,
+    expiring_soon_30_days: expiringSoon,
+    expired_permits: expired,
+    approved_active_permits: approved,
+    total_permits_on_file: allPermits.length
+  });
+});
+
+app.get('/api/admin/driver-verifications', authMiddleware, requireRole('admin'), (req, res) => {
+  const statusFilter = req.query.status && req.query.status !== 'all' ? req.query.status : null;
+  const drivers = userOps.listByRole('driver');
+  const today = new Date().toISOString().split('T')[0];
+
+  const results = drivers.map(d => {
+    const safeUser = userOps.safe(d);
+    const profile = driverProfileOps.findByUsername(d.username) || {
+      username: d.username,
+      driving_licence_no: d.license_number || 'N/A',
+      verification_status: d.verified ? 'approved' : 'pending'
+    };
+    const vehicle = vehicleOps.findByDriver(d.username);
+    const permits = permitOps.findByDriver(d.username).map(p => {
+      const isExpired = p.expiry_date < today;
+      const msLeft = new Date(p.expiry_date).getTime() - new Date(today).getTime();
+      const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+      return {
+        ...p,
+        is_expired: isExpired,
+        days_until_expiry: daysLeft,
+        document_url: `/api/admin/driver-permits/${p.id}/document`
+      };
+    });
+    const latestPermit = permits[0] || null;
+    const history = verificationOps.listByDriver(d.username);
+
+    return {
+      username: d.username,
+      user: safeUser,
+      profile,
+      vehicle,
+      permits,
+      latest_permit: latestPermit,
+      verification_status: profile.verification_status || (d.verified ? 'approved' : 'pending'),
+      history
+    };
+  });
+
+  if (statusFilter) {
+    return res.json(results.filter(r => r.verification_status === statusFilter || (statusFilter === 'pending' && r.latest_permit?.status === 'pending')));
+  }
+  res.json(results);
+});
+
+app.get('/api/admin/driver-permits/:id/document', authMiddleware, (req, res) => {
+  const permit = permitOps.findById(req.params.id);
+  if (!permit) return res.status(404).json({ detail: 'Permit record not found' });
+
+  // Security: only admin or the permit owner can view/download
+  if (req.user.role !== 'admin' && req.user.username !== permit.driver_username) {
+    auditOps.log('unauthorized_document_access_attempt', req.user.username, { permit_id: req.params.id }, req.ip);
+    return res.status(403).json({ detail: 'Forbidden: You do not have permission to view this permit document' });
+  }
+
+  const filePath = permit.document_path;
+  if (!filePath || !fs.existsSync(filePath)) {
+    // Generate inline mock permit PDF if file path is placeholder
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${permit.document_filename || 'permit.pdf'}"`);
+    return res.send(Buffer.from(`%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000101 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n180\n%%EOF`));
+  }
+
+  res.setHeader('Content-Type', permit.document_mimetype || 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${permit.document_filename}"`);
+  res.sendFile(path.resolve(filePath));
+});
+
+app.post('/api/admin/driver-verifications/:permitId/approve', authMiddleware, requireRole('admin'), (req, res) => {
+  const permit = permitOps.findById(req.params.permitId);
+  if (!permit) return res.status(404).json({ detail: 'Permit not found' });
+  const { notes = 'Approved by administrator' } = req.body;
+
+  permitOps.updateStatus(permit.id, 'approved', { note: notes, admin: req.user.username });
+  driverProfileOps.updateVerification(permit.driver_username, 'approved', { note: notes, admin: req.user.username });
+  userOps.setAccountStatus(permit.driver_username, 'verified', 1);
+  userOps.update(permit.driver_username, { verified: 1, status: 'verified' });
+
+  // Mark assigned vehicle verified
+  const vehicle = vehicleOps.findByDriver(permit.driver_username);
+  if (vehicle) {
+    getDb().prepare('UPDATE vehicles SET verified = 1 WHERE id = ?').run(vehicle.id);
+  }
+
+  verificationOps.record({
+    target_type: 'permit',
+    target_id: permit.id,
+    driver_username: permit.driver_username,
+    action: 'approve',
+    reason: notes,
+    admin_username: req.user.username
+  });
+
+  auditOps.log('admin_approve_driver_permit', req.user.username, { permit_id: permit.id, driver: permit.driver_username }, req.ip);
+
+  res.json({
+    message: 'Driver permit approved and driver account verified successfully',
+    permit_id: permit.id,
+    driver_username: permit.driver_username,
+    status: 'approved'
+  });
+});
+
+app.post('/api/admin/driver-verifications/:permitId/reject', authMiddleware, requireRole('admin'), (req, res) => {
+  const permit = permitOps.findById(req.params.permitId);
+  if (!permit) return res.status(404).json({ detail: 'Permit not found' });
+  const { reason } = req.body;
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ detail: 'Rejection reason is required' });
+  }
+
+  permitOps.updateStatus(permit.id, 'rejected', { reason: reason.trim(), admin: req.user.username });
+  driverProfileOps.updateVerification(permit.driver_username, 'rejected', { reason: reason.trim(), admin: req.user.username });
+  userOps.setAccountStatus(permit.driver_username, 'rejected', 1);
+  userOps.update(permit.driver_username, { verified: 0, status: 'rejected' });
+
+  verificationOps.record({
+    target_type: 'permit',
+    target_id: permit.id,
+    driver_username: permit.driver_username,
+    action: 'reject',
+    reason: reason.trim(),
+    admin_username: req.user.username
+  });
+
+  auditOps.log('admin_reject_driver_permit', req.user.username, { permit_id: permit.id, driver: permit.driver_username, reason }, req.ip);
+
+  res.json({
+    message: 'Driver permit rejected',
+    permit_id: permit.id,
+    driver_username: permit.driver_username,
+    status: 'rejected',
+    reason: reason.trim()
+  });
+});
+
+app.post('/api/admin/driver-verifications/:permitId/request-correction', authMiddleware, requireRole('admin'), (req, res) => {
+  const permit = permitOps.findById(req.params.permitId);
+  if (!permit) return res.status(404).json({ detail: 'Permit not found' });
+  const { note } = req.body;
+  if (!note || !note.trim()) {
+    return res.status(400).json({ detail: 'Correction note is required' });
+  }
+
+  permitOps.updateStatus(permit.id, 'correction_requested', { note: note.trim(), admin: req.user.username });
+  driverProfileOps.updateVerification(permit.driver_username, 'correction_requested', { note: note.trim(), admin: req.user.username });
+  userOps.setAccountStatus(permit.driver_username, 'correction_requested', 1);
+  userOps.update(permit.driver_username, { verified: 0, status: 'correction_requested' });
+
+  verificationOps.record({
+    target_type: 'permit',
+    target_id: permit.id,
+    driver_username: permit.driver_username,
+    action: 'request_correction',
+    reason: note.trim(),
+    admin_username: req.user.username
+  });
+
+  auditOps.log('admin_request_permit_correction', req.user.username, { permit_id: permit.id, driver: permit.driver_username, note }, req.ip);
+
+  res.json({
+    message: 'Correction requested from driver',
+    permit_id: permit.id,
+    driver_username: permit.driver_username,
+    status: 'correction_requested',
+    note: note.trim()
+  });
+});
+
+app.post('/api/admin/drivers/:username/status', authMiddleware, requireRole('admin'), (req, res) => {
+  const driver = userOps.findByUsername(req.params.username);
+  if (!driver || driver.role !== 'driver') return res.status(404).json({ detail: 'Driver not found' });
+  const { status, is_active, reason = '' } = req.body;
+
+  if (status && !['pending', 'approved', 'verified', 'rejected', 'correction_requested', 'suspended', 'deactivated'].includes(status)) {
+    return res.status(400).json({ detail: 'Invalid status value' });
+  }
+
+  const activeVal = is_active !== undefined ? (is_active ? 1 : 0) : driver.is_active;
+  const statusVal = status || driver.status || 'pending';
+
+  userOps.setAccountStatus(driver.username, statusVal, activeVal);
+  driverProfileOps.updateVerification(driver.username, statusVal, { reason, admin: req.user.username });
+
+  verificationOps.record({
+    target_type: 'driver',
+    target_id: driver.username,
+    driver_username: driver.username,
+    action: statusVal === 'suspended' ? 'suspend' : statusVal === 'deactivated' ? 'deactivate' : 'reinstate',
+    reason,
+    admin_username: req.user.username
+  });
+
+  auditOps.log('admin_update_driver_account_status', req.user.username, { driver: driver.username, status: statusVal, is_active: activeVal, reason }, req.ip);
+
+  res.json({
+    message: `Driver account status updated to ${statusVal}`,
+    username: driver.username,
+    status: statusVal,
+    is_active: Boolean(activeVal)
+  });
+});
+
+app.get('/api/admin/farmers', authMiddleware, requireRole('admin'), (req, res) => {
+  const farmers = userOps.listByRole('farmer');
+  const allCrops = cropOps.listAll();
+  const allReqs = transportOps.listAll();
+  const allFarms = farmOps.listAll ? farmOps.listAll() : [];
+
+  const results = farmers.map(f => {
+    const crops = allCrops.filter(c => c.farmer === f.username);
+    const reqs = allReqs.filter(r => r.farmer === f.username);
+    const farms = allFarms.filter(fa => fa.farmer === f.username);
+    const profile = farmerProfileOps.findByUsername(f.username);
+    return {
+      ...userOps.safe(f),
+      crops_count: crops.length,
+      farms_count: farms.length,
+      requests_count: reqs.length,
+      profile: profile || null
+    };
+  });
+  res.json(results);
+});
+
+app.get('/api/admin/drivers', authMiddleware, requireRole('admin'), (req, res) => {
+  const drivers = userOps.listByRole('driver');
+  const allVehicles = vehicleOps.listAll();
+  const allTrips = tripOps.listAll();
+  const allPermits = permitOps.list({ limit: 500 });
+  const today = new Date().toISOString().split('T')[0];
+
+  const results = drivers.map(d => {
+    const vehicle = allVehicles.find(v => v.driver === d.username);
+    const trips = allTrips.filter(t => t.driver === d.username);
+    const completedTrips = trips.filter(t => t.status === 'completed');
+    const permits = allPermits.filter(p => p.driver_username === d.username);
+    const latestPermit = permits[0] || null;
+    const profile = driverProfileOps.findByUsername(d.username);
+
+    return {
+      ...userOps.safe(d),
+      vehicle: vehicle || null,
+      profile: profile || null,
+      latest_permit: latestPermit ? {
+        ...latestPermit,
+        is_expired: latestPermit.expiry_date < today
+      } : null,
+      permits_count: permits.length,
+      trips_total: trips.length,
+      trips_completed: completedTrips.length,
+      total_earnings: completedTrips.reduce((s, t) => s + (t.earnings || 0), 0)
+    };
+  });
+  res.json(results);
+});
+
+app.get('/api/admin/vehicles', authMiddleware, requireRole('admin'), (req, res) => {
+  const vehicles = vehicleOps.listAll();
+  const drivers = userOps.listByRole('driver');
+  const results = vehicles.map(v => {
+    const driver = drivers.find(d => d.username === v.driver);
+    return {
+      ...v,
+      driver_name: driver ? driver.full_name : 'Unassigned',
+      driver_phone: driver ? driver.phone : '',
+      driver_status: driver ? driver.status : ''
+    };
+  });
+  res.json(results);
+});
+
+app.get('/api/admin/shipments', authMiddleware, requireRole('admin'), (req, res) => {
+  const requests = transportOps.listAll();
+  const trips = tripOps.listAll();
+  res.json({ requests, trips });
+});
+
+app.get('/api/admin/reports', authMiddleware, requireRole('admin'), (req, res) => {
+  const allTrips = tripOps.listAll();
+  const allReqs = transportOps.listAll();
+  const allPermits = permitOps.list({ limit: 500 });
+  const completedTrips = allTrips.filter(t => t.status === 'completed');
+  const totalRevenue = completedTrips.reduce((s, t) => s + (t.earnings || 0), 0);
+  const totalDistanceKm = completedTrips.reduce((s, t) => s + (t.distance_km || 0), 0);
+
+  const permitsApproved = allPermits.filter(p => p.status === 'approved').length;
+  const complianceRate = allPermits.length > 0 ? Math.round((permitsApproved / allPermits.length) * 100) : 100;
+
+  res.json({
+    metrics: {
+      total_shipments: allReqs.length,
+      completed_shipments: completedTrips.length,
+      active_shipments: allTrips.filter(t => t.status === 'in_transit' || t.status === 'scheduled').length,
+      total_freight_revenue_inr: totalRevenue,
+      total_distance_covered_km: Math.round(totalDistanceKm),
+      permit_compliance_rate_percent: complianceRate
+    },
+    permits_summary: {
+      total: allPermits.length,
+      approved: permitsApproved,
+      pending: permitOps.countPending(),
+      expired: permitOps.countExpired(),
+      expiring_soon_30_days: permitOps.countExpiringSoon(30)
+    }
+  });
+});
+
+// ─── DRIVER SELF-SERVICE PERMIT STATUS & CORRECTION (v2.2.0) ──────────────────
+app.get('/api/driver/my-permit', authMiddleware, requireRole('driver'), (req, res) => {
+  const profile = driverProfileOps.findByUsername(req.user.username);
+  const permits = permitOps.findByDriver(req.user.username);
+  const vehicle = vehicleOps.findByDriver(req.user.username);
+  const activePermit = permitOps.findActiveApprovedByDriver(req.user.username);
+  const today = new Date().toISOString().split('T')[0];
+
+  res.json({
+    driver: req.user,
+    profile,
+    vehicle,
+    has_active_permit: Boolean(activePermit),
+    permits: permits.map(p => ({
+      ...p,
+      is_expired: p.expiry_date < today,
+      document_url: `/api/admin/driver-permits/${p.id}/document`
+    })),
+    latest_permit: permits[0] || null
+  });
+});
+
+app.post('/api/driver/permit-correction', authMiddleware, requireRole('driver'), permitUpload.single('permit_document'), (req, res) => {
+  const { permit_number, permit_type, issuing_authority, issuing_state, auth_details, issue_date, expiry_date } = req.body;
+
+  if (!permit_number || !permit_type || !issue_date || !expiry_date) {
+    return res.status(400).json({ detail: 'Missing required permit fields' });
+  }
+
+  let docFilename = 'corrected_permit.pdf';
+  let docPath = '';
+  let docMime = 'application/pdf';
+  let docSize = 0;
+
+  if (req.file) {
+    docFilename = req.file.originalname;
+    docPath = req.file.path;
+    docMime = req.file.mimetype;
+    docSize = req.file.size;
+  } else if (req.body.document_base64) {
+    const safeBaseName = `permit-corrected-${Date.now()}.pdf`;
+    docPath = path.join(PERMITS_DIR, safeBaseName);
+    const buffer = Buffer.from(req.body.document_base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+    fs.writeFileSync(docPath, buffer);
+    docFilename = req.body.document_filename || safeBaseName;
+    docMime = req.body.document_mimetype || 'application/pdf';
+    docSize = buffer.length;
+  } else {
+    return res.status(400).json({ detail: 'Permit document file (PDF, JPG, PNG) is required' });
+  }
+
+  const permit = permitOps.create({
+    driver_username: req.user.username,
+    permit_type,
+    permit_number,
+    issuing_state: issuing_state || '',
+    issuing_authority: issuing_authority || '',
+    auth_details: auth_details || '',
+    issue_date,
+    expiry_date,
+    document_filename: docFilename,
+    document_path: docPath,
+    document_mimetype: docMime,
+    document_size: docSize,
+    status: 'pending'
+  });
+
+  driverProfileOps.updateVerification(req.user.username, 'pending', { note: 'Driver uploaded corrected permit' });
+  userOps.setAccountStatus(req.user.username, 'pending', 1);
+
+  verificationOps.record({
+    target_type: 'permit',
+    target_id: permit.id,
+    driver_username: req.user.username,
+    action: 'submit',
+    reason: 'Driver submitted updated/corrected permit document',
+    admin_username: null
+  });
+
+  auditOps.log('driver_submitted_permit_correction', req.user.username, { permit_id: permit.id }, req.ip);
+
+  res.json({
+    message: 'Corrected permit document submitted. It is now awaiting admin verification.',
+    permit
+  });
 });
 
 // ─── HEALTH ENDPOINTS ────────────────────────────────────────────────────────

@@ -262,6 +262,100 @@ function initSchema() {
     } catch {}
     db.prepare('INSERT INTO schema_migrations (version) VALUES (3)').run();
   }
+
+  // Migration v4: KrishiDrive v2.2.0 - Role-Based Auth, Driver Permits & Verification
+  const v4 = db.prepare('SELECT 1 FROM schema_migrations WHERE version = 4').get();
+  if (!v4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS driver_profiles (
+        username            TEXT PRIMARY KEY NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+        driving_licence_no  TEXT NOT NULL,
+        licence_expiry      TEXT DEFAULT '',
+        verification_status TEXT NOT NULL DEFAULT 'pending'
+                              CHECK(verification_status IN ('pending','approved','rejected','correction_requested','suspended','deactivated')),
+        rejection_reason    TEXT DEFAULT '',
+        correction_note     TEXT DEFAULT '',
+        reviewed_by         TEXT REFERENCES users(username) ON DELETE SET NULL,
+        reviewed_at         TEXT DEFAULT NULL,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_driver_profiles_status ON driver_profiles(verification_status);
+
+      CREATE TABLE IF NOT EXISTS farmer_profiles (
+        username            TEXT PRIMARY KEY NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+        address             TEXT DEFAULT '',
+        land_area_acres     REAL DEFAULT 0,
+        main_crops          TEXT NOT NULL DEFAULT '[]',
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS driver_permits (
+        id                  TEXT PRIMARY KEY NOT NULL,
+        driver_username     TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+        permit_type         TEXT NOT NULL CHECK(permit_type IN ('state','national')),
+        permit_number       TEXT NOT NULL,
+        issuing_state       TEXT DEFAULT '',
+        issuing_authority   TEXT DEFAULT '',
+        auth_details        TEXT DEFAULT '',
+        issue_date          TEXT NOT NULL,
+        expiry_date         TEXT NOT NULL,
+        document_filename   TEXT NOT NULL,
+        document_path       TEXT NOT NULL,
+        document_mimetype   TEXT NOT NULL,
+        document_size       INTEGER NOT NULL DEFAULT 0,
+        status              TEXT NOT NULL DEFAULT 'pending'
+                              CHECK(status IN ('pending','approved','rejected','correction_requested')),
+        rejection_reason    TEXT DEFAULT '',
+        correction_note     TEXT DEFAULT '',
+        reviewed_by         TEXT REFERENCES users(username) ON DELETE SET NULL,
+        reviewed_at         TEXT DEFAULT NULL,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_permits_driver ON driver_permits(driver_username);
+      CREATE INDEX IF NOT EXISTS idx_permits_status ON driver_permits(status);
+      CREATE INDEX IF NOT EXISTS idx_permits_expiry ON driver_permits(expiry_date);
+
+      CREATE TABLE IF NOT EXISTS verification_records (
+        id                  TEXT PRIMARY KEY NOT NULL,
+        target_type         TEXT NOT NULL CHECK(target_type IN ('driver','permit','vehicle')),
+        target_id           TEXT NOT NULL,
+        driver_username     TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+        action              TEXT NOT NULL CHECK(action IN ('register','submit','approve','reject','request_correction','suspend','reinstate','deactivate')),
+        reason              TEXT DEFAULT '',
+        admin_username      TEXT REFERENCES users(username) ON DELETE SET NULL,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_vr_driver ON verification_records(driver_username);
+      CREATE INDEX IF NOT EXISTS idx_vr_admin ON verification_records(admin_username);
+    `);
+
+    try { db.prepare("ALTER TABLE users ADD COLUMN address TEXT DEFAULT ''").run(); } catch {}
+    try { db.prepare("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'pending'").run(); } catch {}
+    try { db.prepare("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1").run(); } catch {}
+    try { db.prepare("ALTER TABLE vehicles ADD COLUMN photo_url TEXT DEFAULT ''").run(); } catch {}
+
+    try {
+      db.prepare("UPDATE users SET status = 'verified', is_active = 1 WHERE username IN ('admin', 'farmer1', 'farmer2', 'driver1', 'driver2')").run();
+
+      const insertProfile = db.prepare(`
+        INSERT OR IGNORE INTO driver_profiles (username, driving_licence_no, licence_expiry, verification_status, reviewed_by, reviewed_at)
+        VALUES (?, ?, '2029-12-31', 'approved', 'admin', datetime('now'))
+      `);
+      insertProfile.run('driver1', 'MH-15-2020-0012345');
+      insertProfile.run('driver2', 'MH-12-2019-0098765');
+
+      const insertPermit = db.prepare(`
+        INSERT OR IGNORE INTO driver_permits (id, driver_username, permit_type, permit_number, issuing_state, issuing_authority, auth_details, issue_date, expiry_date, document_filename, document_path, document_mimetype, document_size, status, reviewed_by, reviewed_at)
+        VALUES (?, ?, 'national', ?, 'Maharashtra', 'RTO Nashik', 'All India Heavy Goods Carrier Authorization', '2024-01-01', '2029-12-31', 'sample_permit.pdf', 'seeded_permit', 'application/pdf', 1024, 'approved', 'admin', datetime('now'))
+      `);
+      insertPermit.run('PMT-SEED-001', 'driver1', 'NP-MH-2024-8891');
+      insertPermit.run('PMT-SEED-002', 'driver2', 'NP-MH-2024-4412');
+    } catch {}
+
+    db.prepare('INSERT INTO schema_migrations (version) VALUES (4)').run();
+  }
 }
 
 /** Atomic per-table ID generation (call inside a transaction). */
@@ -289,9 +383,9 @@ const userOps = {
     const txn = getDb().transaction(() => {
       getDb().prepare(`
         INSERT INTO users (username, email, full_name, role, hashed_password, village, state, phone,
-          farm_size, crops_grown, vehicle_id, rating, trips_completed, verified, license_number, avatar, created_at)
+          farm_size, crops_grown, vehicle_id, rating, trips_completed, verified, license_number, avatar, address, status, is_active, created_at)
         VALUES (@username, @email, @full_name, @role, @hashed_password, @village, @state, @phone,
-          @farm_size, @crops_grown, @vehicle_id, @rating, @trips_completed, @verified, @license_number, @avatar, @created_at)
+          @farm_size, @crops_grown, @vehicle_id, @rating, @trips_completed, @verified, @license_number, @avatar, @address, @status, @is_active, @created_at)
       `).run({
         username: user.username,
         email: user.email,
@@ -309,6 +403,9 @@ const userOps = {
         verified: user.verified ? 1 : 0,
         license_number: user.license_number || null,
         avatar: user.avatar || '',
+        address: user.address || user.village || '',
+        status: user.status || (user.role === 'driver' ? 'pending' : 'verified'),
+        is_active: user.is_active !== undefined ? (user.is_active ? 1 : 0) : 1,
         created_at: user.created_at || new Date().toISOString().split('T')[0]
       });
       return this.findByUsername(user.username);
@@ -317,17 +414,22 @@ const userOps = {
   },
   update(username, fields) {
     const allowed = ['full_name', 'phone', 'village', 'state', 'farm_size', 'avatar',
-      'verified', 'rating', 'trips_completed', 'license_number'];
+      'verified', 'rating', 'trips_completed', 'license_number', 'address', 'status', 'is_active'];
     const updates = [];
     const values = {};
     for (const [k, v] of Object.entries(fields)) {
       if (v === undefined || !allowed.includes(k)) continue;
       updates.push(`${k} = @${k}`);
-      values[k] = k === 'verified' ? (v ? 1 : 0) : v;
+      values[k] = (k === 'verified' || k === 'is_active') ? (v ? 1 : 0) : v;
     }
     if (!updates.length) return this.findByUsername(username);
     values.username = username;
     getDb().prepare(`UPDATE users SET ${updates.join(', ')} WHERE username = @username`).run(values);
+    return this.findByUsername(username);
+  },
+  setAccountStatus(username, status, is_active = 1) {
+    getDb().prepare('UPDATE users SET status = ?, is_active = ? WHERE username = ?')
+      .run(status, is_active ? 1 : 0, username);
     return this.findByUsername(username);
   },
   incrementTrips(username) {
@@ -344,7 +446,181 @@ const userOps = {
     const { hashed_password, ...safe } = user;
     safe.crops_grown = parseJson(safe.crops_grown, []);
     safe.verified = Boolean(safe.verified);
+    safe.is_active = safe.is_active !== undefined ? Boolean(safe.is_active) : true;
+    safe.status = safe.status || (safe.verified ? 'verified' : 'pending');
+    safe.address = safe.address || safe.village || '';
     return safe;
+  }
+};
+
+// --- DRIVER PROFILES --------------------------------------------------------
+const driverProfileOps = {
+  findByUsername(username) {
+    return getDb().prepare('SELECT * FROM driver_profiles WHERE username = ?').get(username);
+  },
+  create(profile) {
+    getDb().prepare(`
+      INSERT INTO driver_profiles (username, driving_licence_no, licence_expiry, verification_status, rejection_reason, correction_note, reviewed_by, reviewed_at)
+      VALUES (@username, @driving_licence_no, @licence_expiry, @verification_status, @rejection_reason, @correction_note, @reviewed_by, @reviewed_at)
+    `).run({
+      username: profile.username,
+      driving_licence_no: profile.driving_licence_no,
+      licence_expiry: profile.licence_expiry || '',
+      verification_status: profile.verification_status || 'pending',
+      rejection_reason: profile.rejection_reason || '',
+      correction_note: profile.correction_note || '',
+      reviewed_by: profile.reviewed_by || null,
+      reviewed_at: profile.reviewed_at || null
+    });
+    return this.findByUsername(profile.username);
+  },
+  updateVerification(username, status, { reason = '', note = '', admin = 'admin' } = {}) {
+    getDb().prepare(`
+      UPDATE driver_profiles
+      SET verification_status = @status, rejection_reason = @reason, correction_note = @note,
+          reviewed_by = @admin, reviewed_at = datetime('now'), updated_at = datetime('now')
+      WHERE username = @username
+    `).run({ username, status, reason, note, admin });
+    return this.findByUsername(username);
+  }
+};
+
+// --- FARMER PROFILES --------------------------------------------------------
+const farmerProfileOps = {
+  findByUsername(username) {
+    return getDb().prepare('SELECT * FROM farmer_profiles WHERE username = ?').get(username);
+  },
+  create(profile) {
+    getDb().prepare(`
+      INSERT INTO farmer_profiles (username, address, land_area_acres, main_crops)
+      VALUES (@username, @address, @land_area_acres, @main_crops)
+    `).run({
+      username: profile.username,
+      address: profile.address || '',
+      land_area_acres: Number(profile.land_area_acres) || 0,
+      main_crops: JSON.stringify(profile.main_crops || [])
+    });
+    return this.findByUsername(profile.username);
+  }
+};
+
+// --- DRIVER PERMITS ---------------------------------------------------------
+const permitOps = {
+  findById(id) {
+    return getDb().prepare('SELECT * FROM driver_permits WHERE id = ?').get(id);
+  },
+  findByDriver(driver_username) {
+    return getDb().prepare('SELECT * FROM driver_permits WHERE driver_username = ? ORDER BY created_at DESC').all(driver_username);
+  },
+  findActiveApprovedByDriver(driver_username) {
+    return getDb().prepare(`
+      SELECT * FROM driver_permits
+      WHERE driver_username = ? AND status = 'approved' AND expiry_date >= date('now')
+      ORDER BY expiry_date DESC LIMIT 1
+    `).get(driver_username);
+  },
+  create(permit) {
+    const id = permit.id || getNextId('driver_permits', 'PMT-');
+    getDb().prepare(`
+      INSERT INTO driver_permits (
+        id, driver_username, permit_type, permit_number, issuing_state, issuing_authority,
+        auth_details, issue_date, expiry_date, document_filename, document_path,
+        document_mimetype, document_size, status, rejection_reason, correction_note
+      ) VALUES (
+        @id, @driver_username, @permit_type, @permit_number, @issuing_state, @issuing_authority,
+        @auth_details, @issue_date, @expiry_date, @document_filename, @document_path,
+        @document_mimetype, @document_size, @status, @rejection_reason, @correction_note
+      )
+    `).run({
+      id,
+      driver_username: permit.driver_username,
+      permit_type: permit.permit_type,
+      permit_number: permit.permit_number,
+      issuing_state: permit.issuing_state || '',
+      issuing_authority: permit.issuing_authority || '',
+      auth_details: permit.auth_details || '',
+      issue_date: permit.issue_date,
+      expiry_date: permit.expiry_date,
+      document_filename: permit.document_filename,
+      document_path: permit.document_path,
+      document_mimetype: permit.document_mimetype,
+      document_size: permit.document_size || 0,
+      status: permit.status || 'pending',
+      rejection_reason: permit.rejection_reason || '',
+      correction_note: permit.correction_note || ''
+    });
+    return this.findById(id);
+  },
+  updateStatus(id, status, { reason = '', note = '', admin = 'admin' } = {}) {
+    getDb().prepare(`
+      UPDATE driver_permits
+      SET status = @status, rejection_reason = @reason, correction_note = @note,
+          reviewed_by = @admin, reviewed_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = @id
+    `).run({ id, status, reason, note, admin });
+    return this.findById(id);
+  },
+  list(filters = {}) {
+    const clauses = [];
+    const params = {};
+    if (filters.status) {
+      clauses.push('status = @status');
+      params.status = filters.status;
+    }
+    if (filters.permit_type) {
+      clauses.push('permit_type = @permit_type');
+      params.permit_type = filters.permit_type;
+    }
+    if (filters.driver) {
+      clauses.push('driver_username = @driver');
+      params.driver = filters.driver;
+    }
+    if (filters.expiring_soon_days) {
+      clauses.push("expiry_date BETWEEN date('now') AND date('now', '+' || @days || ' days')");
+      params.days = filters.expiring_soon_days;
+    }
+    if (filters.expired) {
+      clauses.push("expiry_date < date('now')");
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limit = Math.max(1, Math.min(500, parseInt(filters.limit, 10) || 100));
+    const offset = Math.max(0, parseInt(filters.offset, 10) || 0);
+    params.limit = limit;
+    params.offset = offset;
+    return getDb().prepare(`SELECT * FROM driver_permits ${where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset`).all(params);
+  },
+  countPending() {
+    const row = getDb().prepare("SELECT COUNT(*) AS count FROM driver_permits WHERE status = 'pending'").get();
+    return row ? row.count : 0;
+  },
+  countExpiringSoon(days = 30) {
+    const row = getDb().prepare("SELECT COUNT(*) AS count FROM driver_permits WHERE status = 'approved' AND expiry_date BETWEEN date('now') AND date('now', '+' || ? || ' days')").get(days);
+    return row ? row.count : 0;
+  },
+  countExpired() {
+    const row = getDb().prepare("SELECT COUNT(*) AS count FROM driver_permits WHERE expiry_date < date('now')").get();
+    return row ? row.count : 0;
+  }
+};
+
+// --- VERIFICATION RECORDS ---------------------------------------------------
+const verificationOps = {
+  record({ target_type, target_id, driver_username, action, reason = '', admin_username = null }) {
+    const id = getNextId('verification_records', 'VR-');
+    getDb().prepare(`
+      INSERT INTO verification_records (id, target_type, target_id, driver_username, action, reason, admin_username)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, target_type, target_id, driver_username, action, reason, admin_username || null);
+    return this.findById(id);
+  },
+  findById(id) {
+    return getDb().prepare('SELECT * FROM verification_records WHERE id = ?').get(id);
+  },
+  listByDriver(driver_username) {
+    return getDb().prepare('SELECT * FROM verification_records WHERE driver_username = ? ORDER BY created_at DESC').all(driver_username);
+  },
+  listRecent(limit = 100) {
+    return getDb().prepare('SELECT * FROM verification_records ORDER BY created_at DESC LIMIT ?').all(limit);
   }
 };
 
@@ -428,6 +704,28 @@ const vehicleOps = {
   },
   setStatus(id, status) {
     getDb().prepare('UPDATE vehicles SET status = ? WHERE id = ?').run(status, id);
+  },
+  create(vehicle) {
+    const id = vehicle.id || getNextId('vehicles', 'V');
+    getDb().prepare(`
+      INSERT INTO vehicles (id, driver, type, number, capacity, fuel_type, mileage, insurance_valid, status, last_service, verified, permit_type, photo_url)
+      VALUES (@id, @driver, @type, @number, @capacity, @fuel_type, @mileage, @insurance_valid, @status, @last_service, @verified, @permit_type, @photo_url)
+    `).run({
+      id,
+      driver: vehicle.driver || null,
+      type: vehicle.type || 'Truck (10-Ton)',
+      number: vehicle.number,
+      capacity: Number(vehicle.capacity) || 0,
+      fuel_type: vehicle.fuel_type || 'Diesel',
+      mileage: Number(vehicle.mileage) || 0,
+      insurance_valid: vehicle.insurance_valid || '',
+      status: vehicle.status || 'available',
+      last_service: vehicle.last_service || '',
+      verified: vehicle.verified ? 1 : 0,
+      permit_type: vehicle.permit_type || '',
+      photo_url: vehicle.photo_url || ''
+    });
+    return this.findById(id);
   }
 };
 
@@ -973,6 +1271,10 @@ module.exports = {
   DATA_DIR,
   getDb,
   userOps,
+  driverProfileOps,
+  farmerProfileOps,
+  permitOps,
+  verificationOps,
   cropOps,
   farmOps,
   satelliteOps,
