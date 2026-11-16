@@ -205,7 +205,7 @@ export default function FarmMap({
     coordinates.forEach((pt, index) => {
       const circleMarker = L.circleMarker(pt, {
         radius: 6,
-        fillColor: '#10b981',
+        fillColor: '#0785E8',
         color: '#ffffff',
         weight: 2,
         opacity: 1,
@@ -221,9 +221,9 @@ export default function FarmMap({
     // Draw line or polygon
     if (coordinates.length >= 3) {
       const polygon = L.polygon(coordinates, {
-        color: '#10b981',
+        color: '#0785E8',
         weight: 3,
-        fillColor: '#34d399',
+        fillColor: '#38B1FA',
         fillOpacity: 0.35,
         dashArray: undefined
       })
@@ -250,7 +250,7 @@ export default function FarmMap({
       }
     } else if (coordinates.length === 2) {
       const polyline = L.polyline(coordinates, {
-        color: '#10b981',
+        color: '#0785E8',
         weight: 2,
         dashArray: '4, 4'
       })
@@ -365,18 +365,18 @@ export default function FarmMap({
   }
 
   return (
-    <div className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-forest-800 shadow-md bg-white dark:bg-[#12211c]">
+    <div className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-[#1E293B] shadow-md bg-white dark:bg-[#07172F]">
       {/* Map Control Header / Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-white/90 dark:bg-[#12211c]/90 backdrop-blur-md border-b border-gray-200 dark:border-forest-800 z-10 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-white/90 dark:bg-[#07172F]/90 backdrop-blur-md border-b border-gray-200 dark:border-[#1E293B] z-10 text-xs">
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-gray-200 dark:border-forest-700 overflow-hidden bg-gray-50 dark:bg-[#162a23]">
+          <div className="flex rounded-lg border border-gray-200 dark:border-[#1E293B] overflow-hidden bg-gray-50 dark:bg-[#07172F]">
             <button
               type="button"
               onClick={() => toggleBaseLayer('satellite')}
               className={`px-3 py-1.5 font-medium transition flex items-center gap-1.5 ${
                 activeLayer === 'satellite'
-                  ? 'bg-emerald-600 text-white font-semibold'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-emerald-600'
+                  ? 'bg-electric text-white font-semibold'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-bright'
               }`}
             >
               <Layers size={13} /> Satellite (Esri)
@@ -386,8 +386,8 @@ export default function FarmMap({
               onClick={() => toggleBaseLayer('streets')}
               className={`px-3 py-1.5 font-medium transition flex items-center gap-1.5 ${
                 activeLayer === 'streets'
-                  ? 'bg-emerald-600 text-white font-semibold'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-emerald-600'
+                  ? 'bg-electric text-white font-semibold'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-bright'
               }`}
             >
               <MapPin size={13} /> Streets (OSM)
@@ -398,7 +398,7 @@ export default function FarmMap({
             type="button"
             onClick={handleLocateMe}
             title="Locate my GPS position"
-            className="p-1.5 rounded-lg border border-gray-200 dark:border-forest-700 bg-white dark:bg-[#162a23] text-gray-700 dark:text-gray-200 hover:border-emerald-500 hover:text-emerald-600 transition flex items-center gap-1"
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] text-gray-700 dark:text-gray-200 hover:border-bright hover:text-bright transition flex items-center gap-1"
           >
             <Crosshair size={14} /> Locate GPS
           </button>
@@ -417,7 +417,7 @@ export default function FarmMap({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-forest-700 bg-white dark:bg-[#162a23] text-gray-700 dark:text-gray-200 hover:border-emerald-500 transition flex items-center gap-1"
+              className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] text-gray-700 dark:text-gray-200 hover:border-bright transition flex items-center gap-1"
             >
               <Upload size={13} /> Import GeoJSON/KML
             </button>
@@ -427,7 +427,7 @@ export default function FarmMap({
                 <button
                   type="button"
                   onClick={handleUndo}
-                  className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-forest-700 bg-white dark:bg-[#162a23] text-gray-700 dark:text-gray-200 hover:text-amber-600 transition"
+                  className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] text-gray-700 dark:text-gray-200 hover:text-amber transition"
                 >
                   Undo Point
                 </button>
@@ -448,11 +448,11 @@ export default function FarmMap({
       <div ref={mapContainerRef} style={{ height, width: '100%', zIndex: 1 }} />
 
       {/* Floating Info Overlay / Area Stats */}
-      <div className="absolute bottom-3 left-3 z-[1000] bg-white/95 dark:bg-[#12211c]/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-forest-800 shadow-lg text-xs pointer-events-auto">
+      <div className="absolute bottom-3 left-3 z-[1000] bg-white/95 dark:bg-[#07172F]/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-[#1E293B] shadow-lg text-xs pointer-events-auto">
         <div className="flex items-center gap-4">
           <div>
             <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Boundary Area</span>
-            <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+            <div className="text-sm font-bold text-bright">
               {areaInfo.acres > 0 ? (
                 <>
                   <span>{areaInfo.acres} Acres</span>
@@ -463,7 +463,7 @@ export default function FarmMap({
               )}
             </div>
           </div>
-          <div className="border-l border-gray-200 dark:border-forest-700 pl-3">
+          <div className="border-l border-gray-200 dark:border-[#1E293B] pl-3">
             <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">Vertices</span>
             <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
               {coordinates.length} points
@@ -474,7 +474,7 @@ export default function FarmMap({
 
       {/* Helper / Status banner */}
       {statusMessage && (
-        <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border-t border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
+        <div className="p-2 bg-blue-50 dark:bg-midnight-800/60 border-t border-blue-200 dark:border-electric-700/60 text-[11px] text-electric dark:text-bright flex items-center gap-1.5">
           <Info size={13} /> {statusMessage}
         </div>
       )}

@@ -7,14 +7,14 @@ import {
 function StatusPill({ status }) {
   if (status === 'ok' || status === 'connected') {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold rounded-full">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#064FAE]/20 text-[#0785E8] text-[11px] font-bold rounded-full">
         <CheckCircle2 size={12} /> UP
       </span>
     )
   }
   if (status === 'degraded' || status === 'unconfigured') {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 text-[11px] font-bold rounded-full">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#FF9800]/20 text-[#FF9800] text-[11px] font-bold rounded-full">
         <AlertTriangle size={12} /> {status === 'unconfigured' ? 'NOT CONFIGURED' : 'DEGRADED'}
       </span>
     )
@@ -28,7 +28,7 @@ function StatusPill({ status }) {
 
 function LatencyBadge({ ms }) {
   if (!ms && ms !== 0) return <span className="text-gray-400 text-xs">—</span>
-  const color = ms < 300 ? 'text-emerald-600 dark:text-emerald-400' : ms < 1000 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
+  const color = ms < 300 ? 'text-[#0785E8]' : ms < 1000 ? 'text-[#FF9800]' : 'text-red-500'
   return <span className={`text-xs font-bold tabular-nums ${color}`}>{ms} ms</span>
 }
 
@@ -107,25 +107,25 @@ export default function SystemStatus() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <span className={`w-3 h-3 rounded-full animate-pulse ${
-            loading ? 'bg-gray-400' : anyDown ? 'bg-red-500' : allUp ? 'bg-emerald-500' : 'bg-amber-500'
+            loading ? 'bg-gray-400' : anyDown ? 'bg-red-500' : allUp ? 'bg-[#0785E8]' : 'bg-[#FF9800]'
           }`} />
-          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
+          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-[#F8FAFC]">
             KrishiDrive System &amp; Integration Status
           </h1>
         </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm text-gray-500 dark:text-[#A7B4C5]">
           Real-time probe of all external APIs, database, and AI runtime. Latency measured at request time from the backend server.
         </p>
         <div className="flex items-center gap-4 mt-3">
           {lastChecked && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 dark:text-[#A7B4C5]">
               Last checked: {lastChecked.toLocaleTimeString('en-IN')}
             </span>
           )}
           <button
             onClick={fetchStatus}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0785E8] hover:text-[#FF9800] disabled:opacity-50 transition"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh Now
           </button>
@@ -138,26 +138,26 @@ export default function SystemStatus() {
           anyDown
             ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800'
             : allUp
-            ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
-            : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+            ? 'bg-[#064FAE]/10 dark:bg-[#064FAE]/20 border-[#064FAE]/30'
+            : 'bg-[#FF9800]/10 dark:bg-[#FF9800]/20 border-[#FF9800]/30'
         }`}>
           {anyDown
             ? <XCircle size={20} className="text-red-500 shrink-0" />
             : allUp
-            ? <CheckCircle2 size={20} className="text-emerald-500 shrink-0" />
-            : <AlertTriangle size={20} className="text-amber-500 shrink-0" />
+            ? <CheckCircle2 size={20} className="text-[#0785E8] shrink-0" />
+            : <AlertTriangle size={20} className="text-[#FF9800] shrink-0" />
           }
           <div>
             <p className={`text-sm font-bold ${
               anyDown ? 'text-red-800 dark:text-red-200'
-              : allUp ? 'text-emerald-800 dark:text-emerald-200'
-              : 'text-amber-800 dark:text-amber-200'
+              : allUp ? 'text-gray-900 dark:text-[#F8FAFC]'
+              : 'text-[#FF9800]'
             }`}>
               {anyDown ? 'Some integrations are unavailable'
                 : allUp ? 'All configured services are operational'
                 : 'Some services need configuration'}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="text-xs text-gray-500 dark:text-[#A7B4C5] mt-0.5">
               {Object.values(services).filter(s => s?.status === 'ok' || s?.status === 'connected').length} / {Object.keys(services).length} services operational
             </p>
           </div>
@@ -176,7 +176,7 @@ export default function SystemStatus() {
       {loading && (
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-[#162a23] animate-pulse" />
+            <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-[#07172F] animate-pulse" />
           ))}
         </div>
       )}
@@ -191,11 +191,11 @@ export default function SystemStatus() {
             return (
               <div
                 key={key}
-                className="bg-white dark:bg-[#12211c] rounded-2xl border border-gray-200 dark:border-forest-800 p-4 shadow-sm"
+                className="bg-white dark:bg-[#111827] rounded-2xl border border-gray-200 dark:border-[#1E293B] p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-700 dark:text-emerald-400 shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-[#064FAE]/15 flex items-center justify-center text-[#0785E8] shrink-0">
                       <Icon size={20} />
                     </div>
                     <div className="min-w-0">
@@ -205,16 +205,16 @@ export default function SystemStatus() {
                         </h3>
                         <StatusPill status={svc.status || 'error'} />
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                      <p className="text-xs text-gray-500 dark:text-[#A7B4C5] mt-1 leading-relaxed">
                         {meta.description}
                       </p>
                       {svc.message && (
-                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 font-medium">
+                        <p className="text-xs text-[#FF9800] mt-1 font-medium">
                           {svc.message}
                         </p>
                       )}
                       {svc.error && (
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                        <p className="text-xs text-red-500 mt-1">
                           Error: {svc.error}
                         </p>
                       )}
@@ -223,13 +223,13 @@ export default function SystemStatus() {
 
                   <div className="shrink-0 text-right flex flex-col items-end gap-2">
                     <LatencyBadge ms={svc.latency_ms} />
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wider">Latency</span>
+                    <span className="text-[10px] text-gray-400 dark:text-[#A7B4C5] uppercase tracking-wider">Latency</span>
                     {meta.link && (
                       <a
                         href={meta.link}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 flex items-center gap-0.5"
+                        className="text-[11px] text-[#0785E8] hover:text-[#FF9800] flex items-center gap-0.5"
                       >
                         Docs <ExternalLink size={10} />
                       </a>
@@ -243,9 +243,9 @@ export default function SystemStatus() {
       )}
 
       {/* Transparency Note */}
-      <div className="mt-8 p-4 bg-gray-50 dark:bg-[#12211c] rounded-2xl border border-gray-200 dark:border-forest-800 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-        <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
-          <Wifi size={14} /> Transparency Note
+      <div className="mt-8 p-4 bg-gray-50 dark:bg-[#111827] rounded-2xl border border-gray-200 dark:border-[#1E293B] text-xs text-gray-500 dark:text-[#A7B4C5] leading-relaxed">
+        <p className="font-semibold text-gray-700 dark:text-gray-200 mb-1 flex items-center gap-1.5">
+          <Wifi size={14} className="text-[#0785E8]" /> Transparency Note
         </p>
         Latency figures are measured from the KrishiDrive backend server to each third-party endpoint at the moment you load this page — not from your browser. When a service shows "NOT CONFIGURED", functionality gracefully degrades and the UI clearly labels data as unavailable rather than showing simulated values.
       </div>

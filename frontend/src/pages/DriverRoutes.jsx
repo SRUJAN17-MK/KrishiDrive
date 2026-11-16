@@ -21,7 +21,7 @@ const hubs = [
   { from: 'Baramati, Maharashtra', to: 'Gultekdi Market Yard, Pune' }
 ]
 
-const inputClass = 'w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500'
+const inputClass = 'w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF9800]'
 
 function Field({ label, children }) {
   return (
@@ -151,7 +151,7 @@ export default function DriverRoutes() {
               setForm((prev) => ({ ...prev, pickup: hub.from, destination: hub.to }))
               setWaypoints([])
             }}
-            className="text-[11px] whitespace-nowrap px-3 py-1.5 rounded-xl bg-white dark:bg-[#12211c] border border-gray-200 dark:border-[#1e362e] hover:border-emerald-500 text-gray-700 dark:text-gray-300 font-semibold transition"
+            className="text-[11px] whitespace-nowrap px-3 py-1.5 rounded-xl bg-white dark:bg-[#111827] border border-gray-200 dark:border-[#1E293B] hover:border-[#0785E8] text-gray-700 dark:text-[#A7B4C5] font-semibold transition"
           >
             {hub.from.split(',')[0]} → {hub.to.split(',')[0]}
           </button>
@@ -159,7 +159,7 @@ export default function DriverRoutes() {
       </div>
 
       {/* Main Route Planning Form */}
-      <form onSubmit={optimize} className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5 shadow-sm">
+      <form onSubmit={optimize} className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
           <Field label={t('farmer.pickup')}>
             <div className="relative flex items-center">
@@ -176,9 +176,9 @@ export default function DriverRoutes() {
                 onClick={handleUseGps}
                 disabled={gpsLoading}
                 title="Use Current GPS Location"
-                className="absolute right-2 p-1 text-gray-400 hover:text-emerald-600 disabled:opacity-50"
+                className="absolute right-2 p-1 text-gray-400 hover:text-[#0785E8] disabled:opacity-50"
               >
-                <Crosshair size={15} className={gpsLoading ? 'animate-spin text-emerald-600' : ''} />
+                <Crosshair size={15} className={gpsLoading ? 'animate-spin text-[#0785E8]' : ''} />
               </button>
             </div>
           </Field>
@@ -221,14 +221,14 @@ export default function DriverRoutes() {
 
         {/* Multi-Stop Waypoints */}
         {waypoints.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-[#1e362e] space-y-2">
+          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-[#1E293B] space-y-2">
             <div className="text-xs font-bold text-gray-700 dark:text-gray-200">
               Intermediate Mandi Drops &amp; Waypoint Stops
             </div>
             <div className="grid sm:grid-cols-2 gap-2">
               {waypoints.map((wpt, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 w-14 shrink-0">
+                  <span className="text-[11px] font-bold text-[#0785E8] w-14 shrink-0">
                     Stop #{idx + 1}
                   </span>
                   <input
@@ -251,17 +251,17 @@ export default function DriverRoutes() {
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-100 dark:border-[#1e362e]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-100 dark:border-[#1E293B]">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={addWaypoint}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0785E8] hover:underline"
             >
               <Plus size={14} /> Add Delivery Stop ({waypoints.length}/4)
             </button>
             <span className="text-gray-300 dark:text-gray-700">|</span>
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 max-w-md">
+            <p className="text-[10px] text-gray-500 dark:text-[#A7B4C5] max-w-md">
               OSRM calculates real highway road networks. If unreachable, a labelled Haversine estimate is provided.
             </p>
           </div>
@@ -269,7 +269,7 @@ export default function DriverRoutes() {
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 px-5 py-2.5 text-xs font-bold text-white transition shadow"
+            className="btn-primary inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs disabled:opacity-50 transition shadow"
           >
             {loading ? <RefreshCw size={15} className="animate-spin" /> : <RouteIcon size={15} />}
             {loading ? t('common.loading') : t('driver.getRoute')}
@@ -280,7 +280,7 @@ export default function DriverRoutes() {
       {error && <ErrorBlock message={error} onRetry={optimize} />}
 
       {!loading && !result && !error && (
-        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-[#274a3d] p-10 text-center text-sm text-gray-500 dark:text-gray-400">
+        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-[#1E293B] p-10 text-center text-sm text-gray-500 dark:text-[#A7B4C5]">
           {t('driver.noRoute')}
         </div>
       )}
@@ -293,7 +293,7 @@ export default function DriverRoutes() {
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${
                   isOsrm
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    ? 'bg-blue-100 text-electric dark:bg-electric/25 dark:text-bright'
                     : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                 }`}
               >
@@ -334,32 +334,32 @@ export default function DriverRoutes() {
 
           {/* Route Metrics Grid */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 shadow-sm">
-              <p className="text-[10px] uppercase font-bold text-gray-400">{t('common.distance')}</p>
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+              <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">{t('common.distance')}</p>
               <p className="text-xl font-extrabold text-gray-900 dark:text-white mt-1">
                 {result.alternatives?.[selectedRouteIdx]?.distance_km ?? result.route.distance_km} km
               </p>
             </div>
-            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 shadow-sm">
-              <p className="text-[10px] uppercase font-bold text-gray-400">{t('common.duration')}</p>
-              <p className="text-xl font-extrabold text-gray-900 dark:text-white mt-1">
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+              <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">{t('common.duration')}</p>
+              <p className="text-xl font-extrabold text-[#0785E8] mt-1">
                 {result.alternatives?.[selectedRouteIdx]?.duration_hours ?? result.route.estimated_time_hours} h
               </p>
             </div>
-            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 shadow-sm">
-              <p className="text-[10px] uppercase font-bold text-gray-400">{t('driver.fuelEstimate')}</p>
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+              <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">{t('driver.fuelEstimate')}</p>
               <p className="text-xl font-extrabold text-gray-900 dark:text-white mt-1">
                 {result.route.fuel_liters_estimate} L
               </p>
             </div>
-            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 shadow-sm">
-              <p className="text-[10px] uppercase font-bold text-gray-400">{t('driver.tollEstimate')}</p>
-              <p className="text-xl font-extrabold text-gray-900 dark:text-white mt-1">
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+              <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">{t('driver.tollEstimate')}</p>
+              <p className="text-xl font-extrabold text-[#FF9800] mt-1">
                 {result.route.estimated_tolls_inr}
               </p>
             </div>
-            <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 shadow-sm">
-              <p className="text-[10px] uppercase font-bold text-gray-400">{t('driver.co2')}</p>
+            <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+              <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">{t('driver.co2')}</p>
               <p className="text-xl font-extrabold text-gray-900 dark:text-white mt-1">
                 {result.route.co2_kg_estimate} kg
               </p>
@@ -368,15 +368,15 @@ export default function DriverRoutes() {
 
           {/* Leg Breakdown if intermediate stops exist */}
           {result.legs && result.legs.length > 1 && (
-            <section className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 shadow-sm">
+            <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
               <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
-                <Navigation size={16} className="text-emerald-600" /> Multi-Stop Delivery Sequence
+                <Navigation size={16} className="text-[#0785E8]" /> Multi-Stop Delivery Sequence
               </h2>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {result.legs.map((leg, index) => (
-                  <div key={index} className="rounded-xl border border-gray-200 dark:border-[#274a3d] p-3 text-xs bg-gray-50/50 dark:bg-[#162a23]/50">
-                    <p className="font-bold text-emerald-700 dark:text-emerald-400">Leg #{leg.step}</p>
-                    <p className="text-gray-700 dark:text-gray-200 font-semibold mt-1">
+                  <div key={index} className="rounded-xl border border-gray-200 dark:border-[#1E293B] p-3 text-xs bg-gray-50/50 dark:bg-[#07172F]/50">
+                    <p className="font-bold text-[#0785E8]">Leg #{leg.step}</p>
+                    <p className="text-gray-700 dark:text-[#A7B4C5] font-semibold mt-1">
                       {leg.distance_km} km · {leg.duration_minutes} min
                     </p>
                   </div>
@@ -387,9 +387,9 @@ export default function DriverRoutes() {
 
           {/* Alternative Routes Switcher */}
           {result.alternatives && result.alternatives.length > 0 && (
-            <section className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4 shadow-sm">
+            <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
               <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
-                <RouteIcon size={16} className="text-emerald-600" /> {t('driver.alternatives')}
+                <RouteIcon size={16} className="text-[#0785E8]" /> {t('driver.alternatives')}
               </h2>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {result.alternatives.map((alt, index) => (
@@ -399,8 +399,8 @@ export default function DriverRoutes() {
                     onClick={() => setSelectedRouteIdx(index)}
                     className={`rounded-xl border p-3 text-left transition cursor-pointer ${
                       selectedRouteIdx === index
-                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 ring-2 ring-emerald-500/20'
-                        : 'border-gray-200 dark:border-[#274a3d] hover:border-gray-300 dark:hover:border-[#386b58]'
+                        ? 'border-[#0785E8] bg-[#064FAE]/15 ring-2 ring-[#0785E8]/20'
+                        : 'border-gray-200 dark:border-[#1E293B] hover:border-gray-300 dark:hover:border-[#0785E8]/50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -408,12 +408,12 @@ export default function DriverRoutes() {
                         {alt.is_primary ? t('driver.primaryRoute') : `${t('driver.alternatives')} ${index}`}
                       </p>
                       {selectedRouteIdx === index && (
-                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold text-[#0785E8] bg-[#064FAE]/20 px-2 py-0.5 rounded-full">
                           Active Map
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                    <p className="text-xs text-gray-600 dark:text-[#A7B4C5] mt-1">
                       {alt.distance_km} km · {alt.duration_minutes} {t('common.min')}
                     </p>
                   </button>
@@ -423,7 +423,7 @@ export default function DriverRoutes() {
           )}
 
           {/* Engine & Transparency Disclosure */}
-          <div className="rounded-xl bg-gray-50 dark:bg-[#162a23] p-3 text-[11px] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-[#1e362e]">
+          <div className="rounded-xl bg-gray-50 dark:bg-[#07172F] p-3 text-[11px] text-gray-500 dark:text-[#A7B4C5] border border-gray-100 dark:border-[#1E293B]">
             <p className="font-semibold text-gray-700 dark:text-gray-200">{result.engine_info.name}</p>
             <p className="mt-1">{result.engine_info.note}</p>
             <p className="mt-1">

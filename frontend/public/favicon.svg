@@ -1,1 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#22c55e"/><text x="50" y="58" font-family="Arial" font-size="32" font-weight="bold" fill="white" text-anchor="middle">K</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="kdGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#07172F" />
+      <stop offset="100%" stop-color="#064FAE" />
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="46" fill="url(#kdGrad)" stroke="#0785E8" stroke-width="3"/>
+  <circle cx="68" cy="34" r="5" fill="#FF9800"/>
+  <text x="48" y="62" font-family="'Inter', Arial, sans-serif" font-size="36" font-weight="900" fill="#F8FAFC" text-anchor="middle">K</text>
+</svg>

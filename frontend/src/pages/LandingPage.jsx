@@ -25,19 +25,19 @@ function LiveEvidence() {
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="text-2xl font-extrabold text-white">{info?.model?.classes ?? 38}</div>
-        <div className="text-[11px] text-gray-400 mt-1">PlantVillage classes</div>
+        <div className="text-[11px] text-muted mt-1">PlantVillage classes</div>
       </div>
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="text-2xl font-extrabold text-white">{latency ? `${latency} ms` : '3.3 ms'}</div>
-        <div className="text-[11px] text-gray-400 mt-1">Measured CPU latency{measured ? ` · n=${measured}` : ''}</div>
+        <div className="text-[11px] text-muted mt-1">Measured CPU latency{measured ? ` · n=${measured}` : ''}</div>
       </div>
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="text-2xl font-extrabold text-white">23</div>
-        <div className="text-[11px] text-gray-400 mt-1">Indian Languages</div>
+        <div className="text-[11px] text-muted mt-1">Indian Languages</div>
       </div>
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-2xl font-extrabold text-white">OSRM</div>
-        <div className="text-[11px] text-gray-400 mt-1">Real road routing</div>
+        <div className="text-2xl font-extrabold text-amber">OSRM</div>
+        <div className="text-[11px] text-muted mt-1">Real road routing</div>
       </div>
     </div>
   )
@@ -85,8 +85,8 @@ export default function LandingPage() {
       title: 'Farmer Portal',
       user: 'Ramesh Patel (farmer1)',
       icon: Sprout,
-      color: 'from-emerald-600 to-emerald-800',
-      badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      color: 'from-[#064FAE] to-[#0785E8]',
+      badge: 'bg-blue-50 text-electric dark:bg-electric/20 dark:text-bright border-bright/30',
       description: 'Manage crop lifecycle, map satellite plot boundaries, track Copernicus soil moisture, check mandi prices, and book produce transport.',
       highlights: ['Crop Lifecycle & Land Records', 'Satellite Moisture & NDVI Advisory', 'Where to Sell Net Profit Calculator', 'Transport Booking & Delivery OTP'],
       demoUser: 'farmer1',
@@ -97,8 +97,8 @@ export default function LandingPage() {
       title: 'Driver / Transporter Portal',
       user: 'Suresh Kumar (driver1)',
       icon: Truck,
-      color: 'from-amber-600 to-amber-800',
-      badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+      color: 'from-[#FF9800] to-[#F5A623]',
+      badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/40',
       description: 'Find agricultural freight jobs, optimize road routes with OSRM, update shipment milestones, and confirm handovers with Delivery OTP.',
       highlights: ['Available Farm Dispatch Jobs', 'OSRM Route Geometry & Turn Times', 'Driver Earnings & Fuel Ledger', '4-Digit Delivery OTP Handover'],
       demoUser: 'driver1',
@@ -109,8 +109,8 @@ export default function LandingPage() {
       title: 'Admin Governance Portal',
       user: 'Platform Admin (admin)',
       icon: ShieldCheck,
-      color: 'from-indigo-600 to-indigo-800',
-      badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+      color: 'from-[#07172F] to-[#064FAE]',
+      badge: 'bg-slate-100 text-midnight dark:bg-midnight-800 dark:text-bright-300 border-blue-400/30',
       description: 'Complete system oversight: user verification, driver KYC compliance, real-time API latency monitoring, audit trails, and farmer support desk.',
       highlights: ['User & Driver Verification (KYC)', 'Live System Integration Status Probe', 'Filterable Immutable Audit Trail', 'Farmer Support Desk Governance'],
       demoUser: 'admin',
@@ -119,17 +119,17 @@ export default function LandingPage() {
   ]
 
   return (
-    <div className="bg-slate-50 dark:bg-[#0b1411]">
+    <div className="bg-slate-50 dark:bg-[#07172F]">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#0d2b21] via-[#124734] to-[#0a1c16] text-white">
-        <div className="absolute inset-0 opacity-20" aria-hidden="true">
-          <div className="absolute -top-24 -right-20 h-80 w-80 rounded-full bg-emerald-400 blur-3xl" />
-          <div className="absolute bottom-0 left-1/4 h-64 w-64 rounded-full bg-amber-400 blur-3xl" />
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#07172F] via-[#0A2244] to-[#07172F] text-white">
+        <div className="absolute inset-0 opacity-25" aria-hidden="true">
+          <div className="absolute -top-24 -right-20 h-96 w-96 rounded-full bg-[#0785E8] blur-3xl opacity-30" />
+          <div className="absolute bottom-0 left-1/4 h-80 w-80 rounded-full bg-[#FF9800] blur-3xl opacity-20" />
         </div>
         <div className="relative max-w-7xl mx-auto px-4 py-16 sm:py-24 grid lg:grid-cols-2 gap-12 items-center">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-bold text-emerald-300 mb-5">
-              <ShieldCheck size={14} /> {t('landing.badge')}
+            <div className="inline-flex items-center gap-2 rounded-full border border-bright/40 bg-bright/10 px-3 py-1.5 text-[11px] font-bold text-bright-300 mb-5">
+              <ShieldCheck size={14} className="text-amber" /> {t('landing.badge')}
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.08]">
               {t('landing.heroTitle')}
@@ -138,32 +138,32 @@ export default function LandingPage() {
               {t('landing.heroBody')}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <a href="#portals" className="inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 px-5 py-3 text-sm font-extrabold text-[#1b1a0e] shadow-lg shadow-amber-900/20 transition">
+              <a href="#portals" className="btn-primary px-6 py-3.5 text-sm font-extrabold">
                 <LogIn size={17} /> Choose Portal &amp; Sign In <ArrowRight size={17} />
               </a>
               <Link to="/ai-lab" className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 px-5 py-3 text-sm font-bold text-white transition">
-                <Brain size={17} /> {t('landing.exploreAi')}
+                <Brain size={17} className="text-bright" /> {t('landing.exploreAi')}
               </Link>
             </div>
-            <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-gray-400">
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-400" /> 23 Indian Languages + RTL</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-400" /> Real Satellite Telemetry</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-emerald-400" /> Secure Delivery OTP</span>
+            <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-muted">
+              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-bright" /> 23 Indian Languages + RTL</span>
+              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-bright" /> Real Satellite Telemetry</span>
+              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-amber" /> Secure Delivery OTP</span>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-black/20 backdrop-blur p-5 shadow-2xl">
+          <div className="rounded-3xl border border-white/10 bg-[#111827]/80 backdrop-blur p-5 sm:p-6 shadow-2xl">
             <div className="flex items-center justify-between gap-2 mb-4">
-              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-300">Measured Evidence</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-400/20 px-2 py-1 text-[10px] font-bold text-emerald-300"><Cpu size={11} /> CPU Inference</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-bright-400">Measured Evidence</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-bright/10 border border-bright/25 px-2.5 py-1 text-[10px] font-bold text-bright"><Cpu size={11} /> CPU Inference</span>
             </div>
             <LiveEvidence />
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-white"><AlertTriangle size={14} className="text-amber-400" /> Verifiable Engineering Standards</div>
-              <p className="text-[11px] text-gray-400 leading-relaxed mt-1.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-white"><AlertTriangle size={14} className="text-amber" /> Verifiable Engineering Standards</div>
+              <p className="text-[11px] text-muted leading-relaxed mt-1.5">
                 ONNX disease classification runs on server CPU. Copernicus soil moisture and weather run on live Open-Meteo endpoints. OSRM calculates real road distances. No fabricated benchmarks or fake live prices.
               </p>
-              <Link to="/system-status" className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300">
+              <Link to="/system-status" className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-bold text-bright hover:underline">
                 Inspect Live System Status <ArrowRight size={12} />
               </Link>
             </div>
@@ -174,13 +174,13 @@ export default function LandingPage() {
       {/* THREE USER PORTALS & 1-CLICK LOGIN SECTION */}
       <section id="portals" className="max-w-7xl mx-auto px-4 py-16">
         <div className="text-center max-w-3xl mx-auto mb-12">
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 px-3.5 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-3">
-            <KeyRound size={14} /> Role-Based Access Portals
+          <div className="inline-flex items-center gap-2 rounded-full border border-bright/30 bg-blue-50 dark:bg-midnight-800/80 px-3.5 py-1.5 text-xs font-bold text-electric dark:text-bright mb-3">
+            <KeyRound size={14} className="text-amber" /> Role-Based Access Portals
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
             Select Your KrishiDrive Portal
           </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+          <p className="text-sm text-gray-600 dark:text-muted mt-2">
             Three independent dashboards tailored for Indian farmers, transport haulers, and platform administrators. Launch instantly with 1-click test accounts or sign in with your credentials.
           </p>
         </div>
@@ -194,10 +194,10 @@ export default function LandingPage() {
             return (
               <div
                 key={p.role}
-                className={`rounded-3xl border bg-white dark:bg-[#12211c] shadow-lg overflow-hidden flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${
+                className={`rounded-3xl border bg-white dark:bg-[#111827] shadow-lg overflow-hidden flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${
                   isCurrentlyActive
-                    ? 'border-emerald-500 ring-2 ring-emerald-500/20'
-                    : 'border-gray-200 dark:border-[#1e362e]'
+                    ? 'border-bright ring-2 ring-bright/20'
+                    : 'border-gray-200 dark:border-[#1E293B]'
                 }`}
               >
                 <div className="p-6">
@@ -214,7 +214,7 @@ export default function LandingPage() {
                   <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                     {p.title}
                   </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <p className="text-xs text-gray-500 dark:text-muted mt-0.5">
                     Demo account: <strong className="text-gray-800 dark:text-gray-200">{p.user}</strong>
                   </p>
 
@@ -226,7 +226,7 @@ export default function LandingPage() {
                   <ul className="mt-5 space-y-2 text-xs text-gray-600 dark:text-gray-300">
                     {p.highlights.map((h, i) => (
                       <li key={i} className="flex items-center gap-2">
-                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                        <CheckCircle2 size={14} className="text-bright shrink-0" />
                         <span>{h}</span>
                       </li>
                     ))}
@@ -234,15 +234,15 @@ export default function LandingPage() {
                 </div>
 
                 {/* Card Action Footer */}
-                <div className="p-6 pt-0 border-t border-gray-100 dark:border-[#1e362e]/60 mt-4">
+                <div className="p-6 pt-0 border-t border-gray-100 dark:border-[#1E293B] mt-4">
                   <button
                     type="button"
                     onClick={() => handlePortalLaunch(p.role, p.demoUser)}
                     disabled={isLoggingIn}
                     className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm ${
                       isCurrentlyActive
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        : 'bg-gray-900 hover:bg-black dark:bg-[#1a382e] dark:hover:bg-emerald-700 text-white'
+                        ? 'btn-secondary'
+                        : 'bg-[#07172F] hover:bg-electric text-white dark:bg-[#1E293B] dark:hover:bg-electric'
                     }`}
                   >
                     {isLoggingIn ? (
@@ -266,7 +266,7 @@ export default function LandingPage() {
                   <div className="mt-2 text-center">
                     <Link
                       to={`/login?role=${p.role}`}
-                      className="text-[11px] text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition"
+                      className="text-[11px] text-gray-500 dark:text-muted hover:text-bright transition"
                     >
                       Sign in with custom password &rarr;
                     </Link>
@@ -278,26 +278,26 @@ export default function LandingPage() {
         </div>
 
         {/* Register Bar */}
-        <div className="mt-10 p-6 rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="mt-10 p-6 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-midnight-800 text-electric dark:text-bright flex items-center justify-center">
               <UserCheck size={20} />
             </div>
             <div>
               <p className="text-sm font-bold text-gray-900 dark:text-white">Need a new personal account?</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Register in 30 seconds as a Farmer or Transporter with zero registration fee.</p>
+              <p className="text-xs text-gray-500 dark:text-muted">Register in 30 seconds as a Farmer or Transporter with zero registration fee.</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <Link
               to="/login"
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-forest-700 hover:bg-gray-50 transition"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-[#1E293B] hover:bg-gray-50 dark:hover:bg-[#1E293B] transition"
             >
               Custom Sign In
             </Link>
             <Link
               to="/register"
-              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition"
+              className="btn-primary px-4 py-2 text-xs font-bold"
             >
               Create Account
             </Link>
@@ -308,27 +308,27 @@ export default function LandingPage() {
       {/* Core Features Grid */}
       <section className="max-w-7xl mx-auto px-4 py-14">
         <div className="text-center max-w-2xl mx-auto mb-10">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400 mb-2">Platform Capabilities</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-bright dark:text-bright-400 mb-2">Platform Capabilities</p>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">Real-world agricultural features.</h2>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {features.map((feature) => (
-            <Link key={feature.title} to={feature.link || '/register'} className="group rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5 hover:border-emerald-400 hover:shadow-md transition">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 grid place-items-center mb-3"><feature.icon size={20} /></div>
-              <h3 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-1.5">{feature.title} <ArrowRight size={13} className="opacity-0 group-hover:opacity-100 transition" /></h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mt-1.5">{feature.body}</p>
+            <Link key={feature.title} to={feature.link || '/register'} className="group rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 hover:border-bright hover:shadow-md transition">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-midnight-800 text-electric dark:text-bright grid place-items-center mb-3"><feature.icon size={20} /></div>
+              <h3 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-1.5">{feature.title} <ArrowRight size={13} className="opacity-0 group-hover:opacity-100 transition text-bright" /></h3>
+              <p className="text-xs text-gray-500 dark:text-muted leading-relaxed mt-1.5">{feature.body}</p>
             </Link>
           ))}
         </div>
       </section>
 
       {/* How it works workflow */}
-      <section className="bg-white dark:bg-[#0f1f19] border-y border-gray-200 dark:border-[#1e362e]">
+      <section className="bg-white dark:bg-[#07172F] border-y border-gray-200 dark:border-[#1E293B]">
         <div className="max-w-7xl mx-auto px-4 py-14 grid lg:grid-cols-3 gap-10">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400 mb-2">How it works</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-bright dark:text-bright-400 mb-2">How it works</p>
             <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white">One workflow from field to mandi.</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mt-2">Each step uses a real record or a clearly labelled estimate. Nothing is dressed up as AI when it is a rule.</p>
+            <p className="text-xs text-gray-500 dark:text-muted leading-relaxed mt-2">Each step uses a real record or a clearly labelled estimate. Nothing is dressed up as AI when it is a rule.</p>
           </div>
           <div className="lg:col-span-2 grid sm:grid-cols-2 gap-4">
             {[
@@ -337,11 +337,11 @@ export default function LandingPage() {
               { icon: RouteIcon, title: 'Compare mandis & routes', body: 'OSRM routing calculates net realization taking into account road transport costs.' },
               { icon: Truck, title: 'Book, track and hand over', body: 'Match haulers, follow live transit, and complete handover with 4-digit Delivery OTP.' }
             ].map((step, index) => (
-              <div key={step.title} className="rounded-2xl border border-gray-200 dark:border-[#1e362e] p-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-400"><span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 grid place-items-center">{index + 1}</span> STEP</div>
-                <step.icon size={20} className="text-emerald-600 my-2" />
+              <div key={step.title} className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-slate-50/50 dark:bg-[#111827] p-4">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-electric dark:text-bright"><span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-midnight-800 grid place-items-center text-electric dark:text-bright">{index + 1}</span> STEP</div>
+                <step.icon size={20} className="text-bright my-2" />
                 <p className="text-sm font-bold text-gray-900 dark:text-white">{step.title}</p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{step.body}</p>
+                <p className="text-[11px] text-gray-500 dark:text-muted mt-1">{step.body}</p>
               </div>
             ))}
           </div>
@@ -350,25 +350,25 @@ export default function LandingPage() {
 
       {/* Honest AI commitment */}
       <section className="max-w-7xl mx-auto px-4 py-14 grid lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-6">
-          <div className="flex items-center gap-2 text-sm font-extrabold text-emerald-900 dark:text-emerald-200"><ShieldCheck size={18} /> {t('landing.honestTitle')}</div>
-          <p className="text-xs text-emerald-900/80 dark:text-emerald-200/80 leading-relaxed mt-2">{t('landing.honestBody')}</p>
-          <ul className="mt-3 space-y-1.5 text-[11px] text-emerald-900/80 dark:text-emerald-200/80">
-            <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> Real ONNX Runtime inference on verified PlantVillage dataset.</li>
-            <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> Live weather from Open-Meteo & road distance from OSRM.</li>
-            <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> Full ACID SQLite persistence with concurrency locks.</li>
+        <div className="rounded-2xl border border-bright/30 dark:border-bright/20 bg-blue-50/50 dark:bg-[#111827] p-6">
+          <div className="flex items-center gap-2 text-sm font-extrabold text-electric dark:text-bright"><ShieldCheck size={18} className="text-amber" /> {t('landing.honestTitle')}</div>
+          <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed mt-2">{t('landing.honestBody')}</p>
+          <ul className="mt-3 space-y-1.5 text-[11px] text-gray-600 dark:text-muted">
+            <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-bright" /> Real ONNX Runtime inference on verified PlantVillage dataset.</li>
+            <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-bright" /> Live weather from Open-Meteo & road distance from OSRM.</li>
+            <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-bright" /> Full ACID SQLite persistence with concurrency locks.</li>
           </ul>
         </div>
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-6 flex flex-col justify-between">
+        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-6 flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-2 text-sm font-extrabold text-gray-900 dark:text-white"><Cpu size={18} className="text-emerald-600" /> System Integration Status</div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mt-2">
+            <div className="flex items-center gap-2 text-sm font-extrabold text-gray-900 dark:text-white"><Cpu size={18} className="text-bright" /> System Integration Status</div>
+            <p className="text-xs text-gray-500 dark:text-muted leading-relaxed mt-2">
               All backend external integrations (Open-Meteo, OSRM, Agmarknet, SQLite WAL, ONNX model) are actively probed in real-time with measured latencies.
             </p>
           </div>
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#1e362e] flex items-center justify-between">
-            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Probe Latencies: Weather ~1s · Route ~0.9s · ONNX ~3.3ms</span>
-            <Link to="/system-status" className="px-3.5 py-1.5 bg-gray-100 dark:bg-forest-800 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold hover:bg-emerald-600 hover:text-white transition">
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#1E293B] flex items-center justify-between">
+            <span className="text-xs font-semibold text-electric dark:text-bright">Probe Latencies: Weather ~1s · Route ~0.9s · ONNX ~3.3ms</span>
+            <Link to="/system-status" className="btn-secondary px-3.5 py-1.5 text-xs font-bold">
               View Probe &rarr;
             </Link>
           </div>

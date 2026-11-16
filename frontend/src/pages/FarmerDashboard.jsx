@@ -95,28 +95,28 @@ export default function FarmerDashboard() {
         subtitle={`${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} · ${location}`}
         actions={
           <>
-            <button onClick={() => setShowProfile(true)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#274a3d] bg-white dark:bg-[#12211c] px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200"><User size={15} /> {t('common.profile')}</button>
-            <Link to="/farmer/crops" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-3 py-2 text-xs font-bold text-white"><Plus size={15} /> {t('farmer.addCrop')}</Link>
+            <button onClick={() => setShowProfile(true)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:border-bright transition"><User size={15} className="text-bright" /> {t('common.profile')}</button>
+            <Link to="/farmer/crops" className="btn-primary px-3 py-2 text-xs font-bold"><Plus size={15} /> {t('farmer.addCrop')}</Link>
           </>
         }
       />
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
-        <StatCard label={t('farmer.activeCrops')} value={activeCrops.length} hint={`${crops.length} total`} icon={Sprout} />
+        <StatCard label={t('farmer.activeCrops')} value={activeCrops.length} hint={`${crops.length} total`} icon={Sprout} tone="bright" />
         <StatCard label={t('farmer.pendingTransport')} value={pending.length} hint={t('farmer.bookTransport')} icon={Truck} tone="amber" />
         <StatCard label={t('farmer.inTransit')} value={inTransit.length} hint="matched or in transit" icon={Package} tone="blue" />
-        <StatCard label={t('farmer.expectedRevenue')} value={formatINR(indicativeValue)} hint="Indicative value from your saved rate, not a mandi quote" icon={TrendingUp} tone="indigo" />
+        <StatCard label={t('farmer.expectedRevenue')} value={formatINR(indicativeValue)} hint="Indicative value from your saved rate, not a mandi quote" icon={TrendingUp} tone="amber" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
-        <section className="lg:col-span-2 rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5" aria-live="polite">
+        <section className="lg:col-span-2 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm" aria-live="polite">
           <div className="flex items-center justify-between gap-2 mb-3">
-            <h2 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2"><WeatherIcon size={17} className="text-amber-500" /> {t('farmer.weather')}</h2>
-            {weather?.source && <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">{weather.source} {weather.cached ? '· cached' : '· live'}</span>}
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2"><WeatherIcon size={17} className="text-amber" /> {t('farmer.weather')}</h2>
+            {weather?.source && <span className="text-[10px] font-semibold text-bright dark:text-bright-400 bg-blue-50 dark:bg-electric/20 px-2.5 py-0.5 rounded-full border border-bright/20">{weather.source} {weather.cached ? '· cached' : '· live'}</span>}
           </div>
 
           {weather?.available === false || weatherError ? (
-            <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-4">
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 p-4">
               <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">{t('farmer.weatherUnavailable')}</p>
               <p className="text-[10px] text-amber-700/70 dark:text-amber-400/70 mt-1">{weatherError}</p>
               <button onClick={() => api.weather.get(location).then((data) => { setWeather(data); setWeatherError('') }).catch((err) => setWeatherError(err.message))} className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-900 dark:text-amber-200"><RefreshCw size={12} /> {t('common.retry')}</button>
@@ -127,30 +127,30 @@ export default function FarmerDashboard() {
                 <div>
                   <p className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">{weather.current?.temperature_c ?? '—'}°C</p>
                   <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">{weather.current?.condition?.text}</p>
-                  <p className="text-[10px] text-gray-400">Feels like {weather.current?.feels_like_c ?? '—'}°C · {weather.location?.name}</p>
+                  <p className="text-[10px] text-gray-400 dark:text-muted">Feels like {weather.current?.feels_like_c ?? '—'}°C · {weather.location?.name}</p>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-xs">
-                  <div><p className="text-[10px] text-gray-400 uppercase">Humidity</p><p className="font-bold">{weather.current?.humidity_percent ?? '—'}%</p></div>
-                  <div><p className="text-[10px] text-gray-400 uppercase">Rain</p><p className="font-bold">{weather.current?.rainfall_mm ?? 0} mm</p></div>
-                  <div><p className="text-[10px] text-gray-400 uppercase">Wind</p><p className="font-bold">{weather.current?.wind_kmh ?? '—'} km/h</p></div>
+                  <div><p className="text-[10px] text-gray-400 dark:text-muted uppercase">Humidity</p><p className="font-bold">{weather.current?.humidity_percent ?? '—'}%</p></div>
+                  <div><p className="text-[10px] text-gray-400 dark:text-muted uppercase">Rain</p><p className="font-bold">{weather.current?.rainfall_mm ?? 0} mm</p></div>
+                  <div><p className="text-[10px] text-gray-400 dark:text-muted uppercase">Wind</p><p className="font-bold">{weather.current?.wind_kmh ?? '—'} km/h</p></div>
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {(weather.forecast || []).slice(0, 4).map((day) => (
-                  <div key={day.date} className="rounded-xl bg-gray-50 dark:bg-[#162a23] p-2.5 text-center">
-                    <p className="text-[10px] font-semibold text-gray-500">{new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</p>
-                    <p className="text-xs font-bold mt-1">{Math.round(day.temp_max_c)}° / {Math.round(day.temp_min_c)}°</p>
-                    <p className="text-[9px] text-gray-400 truncate">{day.condition?.text}</p>
+                  <div key={day.date} className="rounded-xl bg-gray-50 dark:bg-[#07172F] p-2.5 text-center border border-gray-100 dark:border-[#1E293B]">
+                    <p className="text-[10px] font-semibold text-gray-500 dark:text-muted">{new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</p>
+                    <p className="text-xs font-bold mt-1 text-gray-900 dark:text-white">{Math.round(day.temp_max_c)}° / {Math.round(day.temp_min_c)}°</p>
+                    <p className="text-[9px] text-gray-400 dark:text-muted truncate">{day.condition?.text}</p>
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-400 mt-3">Fetched {weather.fetched_at ? new Date(weather.fetched_at).toLocaleString() : 'just now'} · Open-Meteo forecast. Not a field sensor reading.</p>
+              <p className="text-[10px] text-gray-400 dark:text-muted mt-3">Fetched {weather.fetched_at ? new Date(weather.fetched_at).toLocaleString() : 'just now'} · Open-Meteo forecast. Not a field sensor reading.</p>
             </>
           ) : null}
         </section>
 
-        <section className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5">
-          <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Sparkles size={16} className="text-emerald-600" /> {t('farmer.quickActions')}</h2>
+        <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Sparkles size={16} className="text-amber" /> {t('farmer.quickActions')}</h2>
           <div className="space-y-2">
             {[
               { to: '/farmer/crops', icon: Sprout, label: t('farmer.addCrop') },
@@ -159,8 +159,8 @@ export default function FarmerDashboard() {
               { to: '/ai-lab', icon: Brain, label: t('farmer.diseaseDetect') },
               { to: '/farmer/assistant', icon: Sparkles, label: t('farmer.askAssistant') }
             ].map((action) => (
-              <Link key={action.to} to={action.to} className="flex items-center gap-3 rounded-xl border border-gray-100 dark:border-[#274a3d] px-3 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
-                <action.icon size={16} className="text-emerald-600" /> {action.label} <ArrowRight size={13} className="ml-auto text-gray-400" />
+              <Link key={action.to} to={action.to} className="flex items-center gap-3 rounded-xl border border-gray-100 dark:border-[#1E293B] px-3 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-[#1E293B] hover:border-bright/40 transition">
+                <action.icon size={16} className="text-bright" /> {action.label} <ArrowRight size={13} className="ml-auto text-gray-400" />
               </Link>
             ))}
           </div>
@@ -168,25 +168,25 @@ export default function FarmerDashboard() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5">
-        <section className="lg:col-span-2 rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5">
+        <section className="lg:col-span-2 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('farmer.recentCrops')}</h2>
-            <Link to="/farmer/crops" className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">{t('common.viewAll')}</Link>
+            <Link to="/farmer/crops" className="text-[11px] font-bold text-bright hover:underline">{t('common.viewAll')}</Link>
           </div>
           {crops.length === 0 ? (
-            <EmptyState title={t('farmer.noCrops')} action={<Link to="/farmer/crops" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white"><Plus size={14} /> {t('farmer.addCrop')}</Link>} />
+            <EmptyState title={t('farmer.noCrops')} action={<Link to="/farmer/crops" className="btn-primary px-3 py-2 text-xs font-bold"><Plus size={14} /> {t('farmer.addCrop')}</Link>} />
           ) : (
-            <div className="divide-y divide-gray-100 dark:divide-[#1e362e]">
+            <div className="divide-y divide-gray-100 dark:divide-[#1E293B]">
               {crops.slice(0, 5).map((crop) => (
                 <div key={crop.id} className="py-2.5 flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 grid place-items-center"><Sprout size={15} className="text-emerald-600" /></span>
+                  <span className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-midnight-800 grid place-items-center"><Sprout size={15} className="text-bright" /></span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{crop.name}</p>
-                    <p className="text-[10px] text-gray-500 flex items-center gap-1"><MapPin size={10} /> {crop.location || '—'} · {crop.acreage} {t('common.acre')}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-muted flex items-center gap-1"><MapPin size={10} /> {crop.location || '—'} · {crop.acreage} {t('common.acre')}</p>
                   </div>
                   <div className="text-right">
                     <StatusBadge status={crop.status} />
-                    <p className="text-[10px] text-gray-400 mt-1">{Number(crop.expected_qty).toLocaleString()} kg</p>
+                    <p className="text-[10px] text-gray-400 dark:text-muted mt-1">{Number(crop.expected_qty).toLocaleString()} kg</p>
                   </div>
                 </div>
               ))}
@@ -195,23 +195,23 @@ export default function FarmerDashboard() {
         </section>
 
         <div className="space-y-5">
-          <section className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5">
+          <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('farmer.recentRequests')}</h2>
-              <Link to="/farmer/transport" className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">{t('common.viewAll')}</Link>
+              <Link to="/farmer/transport" className="text-[11px] font-bold text-bright hover:underline">{t('common.viewAll')}</Link>
             </div>
-            {requests.length === 0 ? <p className="text-xs text-gray-500">{t('farmer.noRequests')}</p> : (
+            {requests.length === 0 ? <p className="text-xs text-gray-500 dark:text-muted">{t('farmer.noRequests')}</p> : (
               <div className="space-y-2">
                 {requests.slice(0, 3).map((request) => (
-                  <div key={request.id} className="rounded-xl bg-gray-50 dark:bg-[#162a23] p-2.5">
+                  <div key={request.id} className="rounded-xl bg-gray-50 dark:bg-[#07172F] p-2.5 border border-gray-100 dark:border-[#1E293B]">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-bold truncate">{request.crop} · {Number(request.quantity).toLocaleString()} kg</p>
+                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{request.crop} · {Number(request.quantity).toLocaleString()} kg</p>
                       <StatusBadge status={request.status} />
                     </div>
-                    <p className="text-[10px] text-gray-500 mt-1 truncate">{request.pickup} → {request.destination}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-muted mt-1 truncate">{request.pickup} → {request.destination}</p>
                     <div className="flex justify-between mt-1 text-[10px]">
-                      <span className="text-gray-400">{request.pickup_date || '—'}</span>
-                      <span className="font-semibold">{request.estimated_cost != null ? formatINR(request.estimated_cost) : t('common.unavailable')}</span>
+                      <span className="text-gray-400 dark:text-muted">{request.pickup_date || '—'}</span>
+                      <span className="font-semibold text-bright">{request.estimated_cost != null ? formatINR(request.estimated_cost) : t('common.unavailable')}</span>
                     </div>
                   </div>
                 ))}
@@ -219,14 +219,14 @@ export default function FarmerDashboard() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5">
-            <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Bell size={15} className="text-amber-500" /> {t('farmer.notifications')}</h2>
-            {notifications.length === 0 ? <p className="text-xs text-gray-500">No actionable notifications.</p> : (
+          <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Bell size={15} className="text-amber" /> {t('farmer.notifications')}</h2>
+            {notifications.length === 0 ? <p className="text-xs text-gray-500 dark:text-muted">No actionable notifications.</p> : (
               <div className="space-y-2">
                 {notifications.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-gray-100 dark:border-[#274a3d] p-2.5">
+                  <div key={item.id} className="rounded-xl border border-gray-100 dark:border-[#1E293B] bg-gray-50/50 dark:bg-[#07172F] p-2.5">
                     <p className="text-[11px] font-bold text-gray-800 dark:text-gray-100">{item.title}</p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">{item.message}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-muted mt-0.5">{item.message}</p>
                   </div>
                 ))}
               </div>
@@ -236,21 +236,21 @@ export default function FarmerDashboard() {
       </div>
 
       {showProfile && (
-        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm grid place-items-center p-4" role="dialog" aria-modal="true" aria-label={t('common.profile')}>
-          <form onSubmit={saveProfile} className="w-full max-w-md rounded-2xl bg-white dark:bg-[#12211c] p-5 shadow-2xl">
+        <div className="fixed inset-0 z-[80] bg-[#07172F]/70 backdrop-blur-sm grid place-items-center p-4" role="dialog" aria-modal="true" aria-label={t('common.profile')}>
+          <form onSubmit={saveProfile} className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111827] border border-gray-200 dark:border-[#1E293B] p-5 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('common.profile')}</h2>
-              <button type="button" onClick={() => setShowProfile(false)} aria-label={t('common.close')} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={17} /></button>
+              <button type="button" onClick={() => setShowProfile(false)} aria-label={t('common.close')} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1E293B]"><X size={17} /></button>
             </div>
             <div className="space-y-3">
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.fullName')}<input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm" /></label>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.phone')}<input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm" /></label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.fullName')}<input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.phone')}<input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
               <div className="grid grid-cols-2 gap-2">
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.village')}<input value={profile.village} onChange={(e) => setProfile({ ...profile, village: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm" /></label>
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.state')}<input value={profile.state} onChange={(e) => setProfile({ ...profile, state: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm" /></label>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.village')}<input value={profile.village} onChange={(e) => setProfile({ ...profile, village: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.state')}<input value={profile.state} onChange={(e) => setProfile({ ...profile, state: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
               </div>
             </div>
-            <button type="submit" disabled={saving} className="mt-4 w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 py-2.5 text-xs font-bold text-white">{saving ? t('common.loading') : t('common.save')}</button>
+            <button type="submit" disabled={saving} className="btn-primary mt-4 w-full py-2.5 text-xs font-bold">{saving ? t('common.loading') : t('common.save')}</button>
           </form>
         </div>
       )}

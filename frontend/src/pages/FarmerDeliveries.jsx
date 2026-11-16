@@ -68,10 +68,10 @@ export default function FarmerDeliveries() {
   return (
     <div className="space-y-6 fade-in max-w-7xl mx-auto">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-[#F8FAFC]">
           Live Mandi Transit &amp; Deliveries
         </h1>
-        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-[#A7B4C5] mt-1">
           Monitor your dispatched produce in real-time with road route mapping from farm gate to market terminal.
         </p>
       </div>
@@ -86,16 +86,16 @@ export default function FarmerDeliveries() {
           return (
             <div
               key={trip.id}
-              className="bg-white dark:bg-[#12211c] rounded-2xl border border-gray-200 dark:border-[#1e362e] p-6 card-hover shadow-sm transition-colors"
+              className="bg-white dark:bg-[#111827] rounded-2xl border border-gray-200 dark:border-[#1E293B] p-6 card-hover shadow-sm transition-colors"
             >
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-[#1e362e]">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-[#1E293B]">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold flex-shrink-0">
+                  <div className="w-12 h-12 rounded-xl bg-[#064FAE]/15 text-[#0785E8] flex items-center justify-center font-bold flex-shrink-0">
                     <Truck size={22} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-extrabold text-gray-900 dark:text-white text-base">
+                      <h3 className="font-extrabold text-gray-900 dark:text-[#F8FAFC] text-base">
                         Trip #{trip.id}: {trip.cargo || req?.crop || 'Produce'}
                       </h3>
                       <span className={`status-badge status-${trip.status}`}>
@@ -103,21 +103,21 @@ export default function FarmerDeliveries() {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1">
-                      <MapPin size={13} className="text-emerald-600 dark:text-emerald-400" />
+                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-[#A7B4C5] mt-1">
+                      <MapPin size={13} className="text-[#0785E8]" />
                       <span>{trip.pickup}</span>
                       <span className="text-gray-400">→</span>
                       <span className="font-bold text-gray-900 dark:text-white">{trip.destination}</span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-[#A7B4C5] mt-2">
                       <span>Hauler ID: <strong className="text-gray-800 dark:text-gray-200">{trip.driver}</strong></span>
                       <span>•</span>
                       <span>Vehicle: {trip.vehicle}</span>
                       <span>•</span>
                       <span>Distance: {trip.distance_km} km</span>
                       {trip.eta_hours && (
-                        <span>• Estimated Duration: <strong className="text-emerald-600 dark:text-emerald-400">{trip.eta_hours} Hours</strong></span>
+                        <span>• Estimated Duration: <strong className="text-[#0785E8]">{trip.eta_hours} Hours</strong></span>
                       )}
                     </div>
                   </div>
@@ -125,18 +125,18 @@ export default function FarmerDeliveries() {
 
                 <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between gap-3">
                   <div className="text-left lg:text-right">
-                    <div className="text-lg font-black text-emerald-700 dark:text-emerald-400">
+                    <div className="text-lg font-black text-[#FF9800]">
                       ₹{(trip.earnings || req?.estimated_cost || 4500).toLocaleString()}
                     </div>
-                    <div className="text-[10px] text-gray-400">Total Transit Fee</div>
+                    <div className="text-[10px] text-gray-400 dark:text-[#A7B4C5]">Total Transit Fee</div>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => toggleTripMap(trip)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-[#274a3d] hover:border-emerald-500 bg-white dark:bg-[#162a23] text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm transition"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-[#1E293B] hover:border-[#0785E8] bg-white dark:bg-[#07172F] text-xs font-bold text-gray-700 dark:text-[#A7B4C5] shadow-sm transition"
                   >
-                    <RouteIcon size={14} className="text-emerald-600" />
+                    <RouteIcon size={14} className="text-[#0785E8]" />
                     <span>{isMapOpen ? 'Hide Map' : 'View Route Map'}</span>
                     {isMapOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </button>
@@ -145,10 +145,10 @@ export default function FarmerDeliveries() {
 
               {/* Collapsible Leaflet Route Map */}
               {isMapOpen && (
-                <div className="pt-4 border-b border-gray-100 dark:border-[#1e362e] pb-4">
+                <div className="pt-4 border-b border-gray-100 dark:border-[#1E293B] pb-4">
                   {routeLoading && !cachedRoute ? (
-                    <div className="flex items-center justify-center p-8 gap-2 text-xs text-gray-500">
-                      <Loader size={16} className="animate-spin text-emerald-600" />
+                    <div className="flex items-center justify-center p-8 gap-2 text-xs text-gray-500 dark:text-[#A7B4C5]">
+                      <Loader size={16} className="animate-spin text-[#0785E8]" />
                       Loading road route map…
                     </div>
                   ) : (
@@ -176,10 +176,10 @@ export default function FarmerDeliveries() {
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                             isCurrent
-                              ? 'bg-emerald-600 text-white ring-4 ring-emerald-200 dark:ring-emerald-950 scale-110 shadow-md'
+                              ? 'bg-[#FF9800] text-[#07172F] ring-4 ring-[#FF9800]/20 scale-110 shadow-md font-extrabold'
                               : isDone
-                              ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                              ? 'bg-[#064FAE]/20 text-[#0785E8]'
+                              : 'bg-gray-100 dark:bg-[#07172F] text-gray-400 dark:text-[#A7B4C5]'
                           }`}
                         >
                           {isDone ? <CheckCircle2 size={16} /> : idx + 1}
@@ -187,10 +187,10 @@ export default function FarmerDeliveries() {
                         <span
                           className={`text-[11px] font-semibold mt-2 capitalize hidden sm:block ${
                             isCurrent
-                              ? 'text-emerald-700 dark:text-emerald-400 font-bold'
+                              ? 'text-[#FF9800] font-bold'
                               : isDone
                               ? 'text-gray-800 dark:text-gray-200'
-                              : 'text-gray-400'
+                              : 'text-gray-400 dark:text-[#A7B4C5]'
                           }`}
                         >
                           {step.replace('_', ' ')}
@@ -200,9 +200,9 @@ export default function FarmerDeliveries() {
                   })}
 
                   {/* Progress Line */}
-                  <div className="absolute top-4.5 left-4 right-4 h-1 bg-gray-200 dark:bg-gray-800 -z-0">
+                  <div className="absolute top-4.5 left-4 right-4 h-1 bg-gray-200 dark:bg-[#07172F] -z-0">
                     <div
-                      className="h-full bg-emerald-600 transition-all duration-500"
+                      className="h-full bg-[#FF9800] transition-all duration-500"
                       style={{ width: `${(currentStep / (statusSteps.length - 1)) * 100}%` }}
                     />
                   </div>
@@ -211,28 +211,28 @@ export default function FarmerDeliveries() {
 
               {/* Delivery OTP Section — shown only when in_transit */}
               {trip.status === 'in_transit' && (
-                <div className="mt-5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-4 flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center shrink-0">
-                    <KeyRound size={18} className="text-emerald-700 dark:text-emerald-400" />
+                <div className="mt-5 rounded-xl border border-[#FF9800]/40 bg-[#FF9800]/10 p-4 flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-[#FF9800]/20 flex items-center justify-center shrink-0">
+                    <KeyRound size={18} className="text-[#FF9800]" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200 mb-1">
+                    <p className="text-xs font-bold text-gray-900 dark:text-[#F8FAFC] mb-1">
                       Delivery OTP
                     </p>
                     {trip.delivery_otp ? (
                       <>
-                        <div className="inline-flex items-center gap-2 bg-white dark:bg-[#0d1a14] border border-emerald-300 dark:border-emerald-700 rounded-lg px-4 py-2 mb-2">
-                          <Lock size={14} className="text-emerald-600 dark:text-emerald-400" />
-                          <span className="font-mono font-black text-2xl tracking-[0.3em] text-emerald-700 dark:text-emerald-300 select-all">
+                        <div className="inline-flex items-center gap-2 bg-white dark:bg-[#07172F] border border-[#FF9800] rounded-lg px-4 py-2 mb-2">
+                          <Lock size={14} className="text-[#FF9800]" />
+                          <span className="font-mono font-black text-2xl tracking-[0.3em] text-[#FF9800] select-all">
                             {trip.delivery_otp}
                           </span>
                         </div>
-                        <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 leading-relaxed">
+                        <p className="text-xs text-gray-600 dark:text-[#A7B4C5] leading-relaxed">
                           Share this 4-digit PIN with your driver upon physical arrival and produce inspection.
                         </p>
                       </>
                     ) : (
-                      <p className="text-xs text-emerald-700 dark:text-emerald-400 italic">
+                      <p className="text-xs text-gray-500 dark:text-[#A7B4C5] italic">
                         OTP will appear once driver accepts the job.
                       </p>
                     )}
@@ -244,10 +244,10 @@ export default function FarmerDeliveries() {
         })}
 
         {trips.length === 0 && !loading && (
-          <div className="bg-white dark:bg-[#12211c] rounded-2xl p-12 text-center border border-gray-200 dark:border-[#1e362e]">
-            <Package size={48} className="mx-auto text-emerald-400/40 mb-3" />
+          <div className="bg-white dark:bg-[#111827] rounded-2xl p-12 text-center border border-gray-200 dark:border-[#1E293B]">
+            <Package size={48} className="mx-auto text-[#0785E8]/40 mb-3" />
             <h3 className="font-bold text-gray-800 dark:text-gray-200 text-base">No active delivery transits</h3>
-            <p className="text-xs text-gray-500 mt-1">When a driver confirms your transport dispatch, the real-time tracking will appear here.</p>
+            <p className="text-xs text-gray-500 dark:text-[#A7B4C5] mt-1">When a driver confirms your transport dispatch, the real-time tracking will appear here.</p>
           </div>
         )}
       </div>

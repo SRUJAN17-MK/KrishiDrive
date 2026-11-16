@@ -147,17 +147,17 @@ export default function SatelliteIntelligence() {
   return (
     <div className="space-y-6 pb-12">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#12211c] p-6 rounded-2xl border border-gray-200 dark:border-forest-800 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#111827] p-6 rounded-2xl border border-gray-200 dark:border-[#1E293B] shadow-sm">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="p-2 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 rounded-xl">
+            <span className="p-2 bg-[#064FAE]/15 text-[#0785E8] rounded-xl">
               <Globe size={22} />
             </span>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-[#F8FAFC]">
               Satellite Intelligence & Crop Advisory
             </h1>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-500 dark:text-[#A7B4C5]">
             Real Copernicus land surface telemetry (ECMWF via Open-Meteo) & multi-factor agronomic suitability analysis.
           </p>
         </div>
@@ -166,7 +166,7 @@ export default function SatelliteIntelligence() {
           <button
             type="button"
             onClick={() => setShowAddFarmModal(true)}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center gap-2"
+            className="btn-primary px-4 py-2.5 text-xs shadow-sm transition flex items-center gap-2"
           >
             <Plus size={16} /> Add Farm Plot
           </button>
@@ -175,7 +175,7 @@ export default function SatelliteIntelligence() {
               type="button"
               onClick={() => handleRunAnalysis(selectedFarm)}
               disabled={analyzing}
-              className="px-4 py-2.5 border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-xl text-xs font-semibold transition flex items-center gap-2 disabled:opacity-50"
+              className="px-4 py-2.5 border border-[#0785E8] text-[#0785E8] hover:bg-[#064FAE]/15 rounded-xl text-xs font-semibold transition flex items-center gap-2 disabled:opacity-50"
             >
               <RefreshCw size={15} className={analyzing ? 'animate-spin' : ''} />
               {analyzing ? 'Analyzing Telemetry…' : 'Re-Analyze Telemetry'}
@@ -194,11 +194,11 @@ export default function SatelliteIntelligence() {
               onClick={() => setSelectedFarm(f)}
               className={`px-4 py-2.5 rounded-xl text-xs font-medium border whitespace-nowrap transition flex items-center gap-2 ${
                 isSelected
-                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
-                  : 'bg-white dark:bg-[#12211c] text-gray-700 dark:text-gray-200 border-gray-200 dark:border-forest-800 hover:border-emerald-500'
+                  ? 'bg-[#FF9800] text-[#07172F] border-[#FF9800] shadow-sm font-extrabold'
+                  : 'bg-white dark:bg-[#111827] text-gray-700 dark:text-[#A7B4C5] border-gray-200 dark:border-[#1E293B] hover:border-[#0785E8]'
               }`}
             >
-              <MapPin size={14} className={isSelected ? 'text-emerald-200' : 'text-emerald-600'} />
+              <MapPin size={14} className={isSelected ? 'text-[#07172F]' : 'text-[#0785E8]'} />
               <span>{f.name}</span>
               <span className="text-[11px] opacity-75">({f.area_acres || 0} ac)</span>
             </button>
@@ -214,13 +214,13 @@ export default function SatelliteIntelligence() {
         <div className="grid lg:grid-cols-12 gap-6">
           {/* Left Column: Interactive Map & Boundary Details */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="bg-white dark:bg-[#12211c] p-4 rounded-2xl border border-gray-200 dark:border-forest-800 shadow-sm">
+            <div className="bg-white dark:bg-[#111827] p-4 rounded-2xl border border-gray-200 dark:border-[#1E293B] shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                  <Layers size={16} className="text-emerald-600" />
+                <h3 className="text-sm font-bold text-gray-800 dark:text-[#F8FAFC] flex items-center gap-2">
+                  <Layers size={16} className="text-[#0785E8]" />
                   Boundary Map & Satellite Imagery
                 </h3>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 dark:text-[#A7B4C5]">
                   {selectedFarm.district}, {selectedFarm.state}
                 </span>
               </div>
@@ -238,21 +238,21 @@ export default function SatelliteIntelligence() {
                 height="320px"
               />
 
-              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-forest-800 flex justify-between text-xs text-gray-600 dark:text-gray-300">
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#1E293B] flex justify-between text-xs text-gray-600 dark:text-[#A7B4C5]">
                 <span>Coordinates: {selectedFarm.latitude?.toFixed(4)}, {selectedFarm.longitude?.toFixed(4)}</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{selectedFarm.area_acres} Acres</span>
+                <span className="font-semibold text-[#0785E8]">{selectedFarm.area_acres} Acres</span>
               </div>
             </div>
 
             {/* Truthful Agronomic Verification Banner */}
-            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl text-xs text-emerald-900 dark:text-emerald-200 space-y-2">
-              <div className="flex items-center gap-2 font-bold text-emerald-800 dark:text-emerald-300">
+            <div className="p-4 bg-[#064FAE]/10 border border-[#064FAE]/30 rounded-2xl text-xs text-gray-800 dark:text-[#F8FAFC] space-y-2">
+              <div className="flex items-center gap-2 font-bold text-[#0785E8]">
                 <ShieldCheck size={16} /> Transparent & Verifiable Remote Sensing
               </div>
-              <p className="text-[11px] leading-relaxed">
+              <p className="text-[11px] leading-relaxed text-gray-600 dark:text-[#A7B4C5]">
                 Soil moisture and temperature are ingested directly from the Copernicus Land Surface Reanalysis model (ECMWF via Open-Meteo) at 0–9 cm root zone. Elevation and slope are calculated from DEM raster elevation models.
               </p>
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+              <p className="text-[11px] text-[#FF9800] font-medium">
                 Note: Optical satellite imagery cannot penetrate soil to measure chemical NPK or pH. Always combine satellite moisture and vegetation index metrics with local soil health cards.
               </p>
             </div>
@@ -263,66 +263,66 @@ export default function SatelliteIntelligence() {
             {/* Telemetry Indicator Cards */}
             {analysis?.environmental_data && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-white dark:bg-[#12211c] p-4 rounded-xl border border-gray-200 dark:border-forest-800 shadow-sm">
-                  <div className="flex items-center justify-between text-gray-400 mb-1">
+                <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-gray-200 dark:border-[#1E293B] shadow-sm">
+                  <div className="flex items-center justify-between text-gray-400 dark:text-[#A7B4C5] mb-1">
                     <span className="text-[11px] uppercase font-bold tracking-wider">NDVI Index</span>
-                    <Sprout size={16} className="text-emerald-600" />
+                    <Sprout size={16} className="text-[#0785E8]" />
                   </div>
                   <div className="text-xl font-bold text-gray-900 dark:text-white">
                     {analysis.spectral_indices?.ndvi ?? '0.68'}
                   </div>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                  <span className="text-[10px] text-[#0785E8] font-medium">
                     {analysis.spectral_indices?.interpretation?.vegetation_vigor || 'Healthy canopy'}
                   </span>
                 </div>
 
-                <div className="bg-white dark:bg-[#12211c] p-4 rounded-xl border border-gray-200 dark:border-forest-800 shadow-sm">
-                  <div className="flex items-center justify-between text-gray-400 mb-1">
+                <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-gray-200 dark:border-[#1E293B] shadow-sm">
+                  <div className="flex items-center justify-between text-gray-400 dark:text-[#A7B4C5] mb-1">
                     <span className="text-[11px] uppercase font-bold tracking-wider">Root Moisture</span>
-                    <Droplets size={16} className="text-blue-500" />
+                    <Droplets size={16} className="text-[#0785E8]" />
                   </div>
                   <div className="text-xl font-bold text-gray-900 dark:text-white">
                     {analysis.environmental_data?.soil_moisture_volumetric_avg
                       ? `${(analysis.environmental_data.soil_moisture_volumetric_avg * 100).toFixed(1)}%`
                       : '28.4%'}
                   </div>
-                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">0–9cm Copernicus</span>
+                  <span className="text-[10px] text-[#0785E8] font-medium">0–9cm Copernicus</span>
                 </div>
 
-                <div className="bg-white dark:bg-[#12211c] p-4 rounded-xl border border-gray-200 dark:border-forest-800 shadow-sm">
-                  <div className="flex items-center justify-between text-gray-400 mb-1">
+                <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-gray-200 dark:border-[#1E293B] shadow-sm">
+                  <div className="flex items-center justify-between text-gray-400 dark:text-[#A7B4C5] mb-1">
                     <span className="text-[11px] uppercase font-bold tracking-wider">Elevation</span>
-                    <Mountain size={16} className="text-amber-600" />
+                    <Mountain size={16} className="text-[#FF9800]" />
                   </div>
                   <div className="text-xl font-bold text-gray-900 dark:text-white">
                     {analysis.environmental_data?.elevation_meters ?? 560} m
                   </div>
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                  <span className="text-[10px] text-gray-500 dark:text-[#A7B4C5]">
                     Slope: {analysis.environmental_data?.slope_percentage ?? '1.8%'}
                   </span>
                 </div>
 
-                <div className="bg-white dark:bg-[#12211c] p-4 rounded-xl border border-gray-200 dark:border-forest-800 shadow-sm">
-                  <div className="flex items-center justify-between text-gray-400 mb-1">
+                <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-gray-200 dark:border-[#1E293B] shadow-sm">
+                  <div className="flex items-center justify-between text-gray-400 dark:text-[#A7B4C5] mb-1">
                     <span className="text-[11px] uppercase font-bold tracking-wider">Surface Temp</span>
-                    <Sun size={16} className="text-orange-500" />
+                    <Sun size={16} className="text-[#FF9800]" />
                   </div>
                   <div className="text-xl font-bold text-gray-900 dark:text-white">
                     {analysis.environmental_data?.surface_temp_celsius ?? '27.4'} &deg;C
                   </div>
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Open-Meteo Live</span>
+                  <span className="text-[10px] text-gray-500 dark:text-[#A7B4C5]">Open-Meteo Live</span>
                 </div>
               </div>
             )}
 
             {/* Navigation Tabs */}
-            <div className="border-b border-gray-200 dark:border-forest-800 flex gap-4 text-xs font-semibold">
+            <div className="border-b border-gray-200 dark:border-[#1E293B] flex gap-4 text-xs font-semibold">
               <button
                 onClick={() => setActiveTab('recommendations')}
                 className={`pb-2.5 transition border-b-2 flex items-center gap-1.5 ${
                   activeTab === 'recommendations'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    ? 'border-[#FF9800] text-[#FF9800]'
+                    : 'border-transparent text-gray-500 dark:text-[#A7B4C5] hover:text-gray-800 dark:hover:text-white'
                 }`}
               >
                 <Sprout size={14} /> Multi-Factor Crop Suitability
@@ -331,8 +331,8 @@ export default function SatelliteIntelligence() {
                 onClick={() => setActiveTab('environmental')}
                 className={`pb-2.5 transition border-b-2 flex items-center gap-1.5 ${
                   activeTab === 'environmental'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    ? 'border-[#FF9800] text-[#FF9800]'
+                    : 'border-transparent text-gray-500 dark:text-[#A7B4C5] hover:text-gray-800 dark:hover:text-white'
                 }`}
               >
                 <Activity size={14} /> Environmental Ingestion Log
@@ -341,8 +341,8 @@ export default function SatelliteIntelligence() {
                 onClick={() => setActiveTab('history')}
                 className={`pb-2.5 transition border-b-2 flex items-center gap-1.5 ${
                   activeTab === 'history'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    ? 'border-[#FF9800] text-[#FF9800]'
+                    : 'border-transparent text-gray-500 dark:text-[#A7B4C5] hover:text-gray-800 dark:hover:text-white'
                 }`}
               >
                 <BarChart3 size={14} /> Past Analyses ({history.length})
@@ -352,7 +352,7 @@ export default function SatelliteIntelligence() {
             {/* Tab 1: Recommendations */}
             {activeTab === 'recommendations' && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs text-gray-500">
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-[#A7B4C5]">
                   <span>Ranked by multi-factor agronomic compatibility model</span>
                   <span>{analysis?.recommended_crops?.length || 0} crops scored</span>
                 </div>
@@ -364,10 +364,10 @@ export default function SatelliteIntelligence() {
                   return (
                     <div
                       key={crop.crop || idx}
-                      className={`p-4 rounded-xl border transition bg-white dark:bg-[#12211c] ${
+                      className={`p-4 rounded-xl border transition bg-white dark:bg-[#111827] ${
                         isTopPick
-                          ? 'border-emerald-500 ring-1 ring-emerald-500/20'
-                          : 'border-gray-200 dark:border-forest-800 hover:border-emerald-400'
+                          ? 'border-[#0785E8] ring-1 ring-[#0785E8]/20'
+                          : 'border-gray-200 dark:border-[#1E293B] hover:border-[#0785E8]'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-4 mb-2">
@@ -375,8 +375,8 @@ export default function SatelliteIntelligence() {
                           <span
                             className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
                               isTopPick
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-gray-100 dark:bg-forest-800 text-gray-700 dark:text-gray-300'
+                                ? 'bg-[#FF9800] text-[#07172F]'
+                                : 'bg-gray-100 dark:bg-[#07172F] text-gray-700 dark:text-[#A7B4C5]'
                             }`}
                           >
                             #{idx + 1}
@@ -387,27 +387,27 @@ export default function SatelliteIntelligence() {
                                 {crop.crop}
                               </h4>
                               {isTopPick && (
-                                <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold rounded-full">
+                                <span className="px-2 py-0.5 bg-[#064FAE]/20 text-[#0785E8] text-[10px] font-bold rounded-full">
                                   Top Recommendation
                                 </span>
                               )}
                             </div>
-                            <span className="text-[11px] text-gray-500">
+                            <span className="text-[11px] text-gray-500 dark:text-[#A7B4C5]">
                               Optimal Sowing: {crop.sowing_window || 'Seasonal'} &bull; Water: {crop.water_need || 'Moderate'}
                             </span>
                           </div>
                         </div>
 
                         <div className="text-right">
-                          <div className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
+                          <div className="text-base font-extrabold text-[#FF9800]">
                             {score} / 100
                           </div>
-                          <span className="text-[10px] text-gray-400 uppercase font-semibold">Suitability</span>
+                          <span className="text-[10px] text-gray-400 dark:text-[#A7B4C5] uppercase font-semibold">Suitability</span>
                         </div>
                       </div>
 
                       {/* Agronomic Rationale */}
-                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 bg-gray-50 dark:bg-[#162a23] p-2.5 rounded-lg border border-gray-100 dark:border-forest-800">
+                      <p className="text-xs text-gray-600 dark:text-[#A7B4C5] mt-2 bg-gray-50 dark:bg-[#07172F] p-2.5 rounded-lg border border-gray-100 dark:border-[#1E293B]">
                         <span className="font-semibold text-gray-800 dark:text-gray-200">Agronomic Rationale: </span>
                         {crop.rationale || 'Compatible with regional elevation and current root zone moisture profile.'}
                       </p>
@@ -424,12 +424,12 @@ export default function SatelliteIntelligence() {
                 })}
 
                 {(!analysis?.recommended_crops || analysis.recommended_crops.length === 0) && (
-                  <div className="p-8 text-center bg-white dark:bg-[#12211c] rounded-xl border border-gray-200 dark:border-forest-800">
-                    <Sprout size={32} className="mx-auto text-gray-400 mb-2" />
+                  <div className="p-8 text-center bg-white dark:bg-[#111827] rounded-xl border border-gray-200 dark:border-[#1E293B]">
+                    <Sprout size={32} className="mx-auto text-[#0785E8]/40 mb-2" />
                     <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                       {analyzing ? 'Ingesting Copernicus land surface data…' : 'No analysis generated yet.'}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-[#A7B4C5] mt-1">
                       Click &quot;Re-Analyze Telemetry&quot; to fetch satellite metrics for this farm plot.
                     </p>
                   </div>
@@ -439,45 +439,45 @@ export default function SatelliteIntelligence() {
 
             {/* Tab 2: Environmental Telemetry Log */}
             {activeTab === 'environmental' && (
-              <div className="bg-white dark:bg-[#12211c] p-4 rounded-xl border border-gray-200 dark:border-forest-800 space-y-4">
+              <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-gray-200 dark:border-[#1E293B] space-y-4">
                 <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">
                   Raw Ingestion Data (Copernicus & DEM)
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 bg-gray-50 dark:bg-[#162a23] rounded-lg">
-                    <span className="text-gray-400 block text-[10px]">Surface Moisture (0-1cm)</span>
+                  <div className="p-3 bg-gray-50 dark:bg-[#07172F] border border-gray-100 dark:border-[#1E293B] rounded-lg">
+                    <span className="text-gray-400 dark:text-[#A7B4C5] block text-[10px]">Surface Moisture (0-1cm)</span>
                     <span className="font-bold text-gray-800 dark:text-gray-200">
                       {analysis?.environmental_data?.soil_moisture_0_to_1cm
                         ? `${(analysis.environmental_data.soil_moisture_0_to_1cm * 100).toFixed(2)}%`
                         : 'N/A'}
                     </span>
                   </div>
-                  <div className="p-3 bg-gray-50 dark:bg-[#162a23] rounded-lg">
-                    <span className="text-gray-400 block text-[10px]">Root Zone Moisture (3-9cm)</span>
+                  <div className="p-3 bg-gray-50 dark:bg-[#07172F] border border-gray-100 dark:border-[#1E293B] rounded-lg">
+                    <span className="text-gray-400 dark:text-[#A7B4C5] block text-[10px]">Root Zone Moisture (3-9cm)</span>
                     <span className="font-bold text-gray-800 dark:text-gray-200">
                       {analysis?.environmental_data?.soil_moisture_3_to_9cm
                         ? `${(analysis.environmental_data.soil_moisture_3_to_9cm * 100).toFixed(2)}%`
                         : 'N/A'}
                     </span>
                   </div>
-                  <div className="p-3 bg-gray-50 dark:bg-[#162a23] rounded-lg">
-                    <span className="text-gray-400 block text-[10px]">Soil Temp (0-7cm)</span>
+                  <div className="p-3 bg-gray-50 dark:bg-[#07172F] border border-gray-100 dark:border-[#1E293B] rounded-lg">
+                    <span className="text-gray-400 dark:text-[#A7B4C5] block text-[10px]">Soil Temp (0-7cm)</span>
                     <span className="font-bold text-gray-800 dark:text-gray-200">
                       {analysis?.environmental_data?.soil_temp_0_to_7cm
                         ? `${analysis.environmental_data.soil_temp_0_to_7cm} °C`
                         : 'N/A'}
                     </span>
                   </div>
-                  <div className="p-3 bg-gray-50 dark:bg-[#162a23] rounded-lg">
-                    <span className="text-gray-400 block text-[10px]">Spectral Water Index (NDWI)</span>
+                  <div className="p-3 bg-gray-50 dark:bg-[#07172F] border border-gray-100 dark:border-[#1E293B] rounded-lg">
+                    <span className="text-gray-400 dark:text-[#A7B4C5] block text-[10px]">Spectral Water Index (NDWI)</span>
                     <span className="font-bold text-gray-800 dark:text-gray-200">
                       {analysis?.spectral_indices?.ndwi ?? '0.34'}
                     </span>
                   </div>
                 </div>
 
-                <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
-                  <Info size={16} className="mt-0.5 shrink-0" />
+                <div className="p-3 bg-[#064FAE]/10 border border-[#064FAE]/30 rounded-lg text-xs text-gray-800 dark:text-[#F8FAFC] flex items-start gap-2">
+                  <Info size={16} className="mt-0.5 shrink-0 text-[#0785E8]" />
                   <span>
                     API source: Open-Meteo Land Surface Reanalysis and Elevation endpoints. Telemetry is updated daily from global orbital passes.
                   </span>
@@ -494,8 +494,8 @@ export default function SatelliteIntelligence() {
                     onClick={() => setAnalysis(item)}
                     className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-center justify-between ${
                       analysis?.id === item.id
-                        ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
-                        : 'border-gray-200 dark:border-forest-800 bg-white dark:bg-[#12211c] hover:border-gray-300'
+                        ? 'border-[#0785E8] bg-[#064FAE]/15'
+                        : 'border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:border-gray-300'
                     }`}
                   >
                     <div>
@@ -508,7 +508,7 @@ export default function SatelliteIntelligence() {
                           minute: '2-digit'
                         })}
                       </div>
-                      <span className="text-gray-400 text-[11px]">
+                      <span className="text-gray-400 dark:text-[#A7B4C5] text-[11px]">
                         Top crop: {item.recommended_crops?.[0]?.crop || 'Wheat'} &bull; NDVI: {item.spectral_indices?.ndvi ?? '0.68'}
                       </span>
                     </div>
@@ -523,16 +523,16 @@ export default function SatelliteIntelligence() {
 
       {/* Add Farm Modal */}
       {showAddFarmModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#12211c] max-w-2xl w-full rounded-2xl border border-gray-200 dark:border-forest-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-gray-200 dark:border-forest-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111827] max-w-2xl w-full rounded-2xl border border-gray-200 dark:border-[#1E293B] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-gray-200 dark:border-[#1E293B] flex items-center justify-between">
               <h3 className="font-bold text-gray-900 dark:text-white text-base flex items-center gap-2">
-                <Sprout size={18} className="text-emerald-600" /> Register New Farm Plot
+                <Sprout size={18} className="text-[#0785E8]" /> Register New Farm Plot
               </h3>
               <button
                 type="button"
                 onClick={() => setShowAddFarmModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+                className="text-gray-400 hover:text-white text-lg leading-none"
               >
                 &times;
               </button>
@@ -541,7 +541,7 @@ export default function SatelliteIntelligence() {
             <form onSubmit={handleCreateFarm} className="p-4 space-y-4 overflow-y-auto">
               <div className="grid sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-[#A7B4C5] mb-1">
                     Farm Plot Name *
                   </label>
                   <input
@@ -550,11 +550,11 @@ export default function SatelliteIntelligence() {
                     value={newFarmName}
                     onChange={(e) => setNewFarmName(e.target.value)}
                     placeholder="e.g. North Plot - Nashik"
-                    className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-forest-700 bg-gray-50 dark:bg-[#162a23] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF9800]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-[#A7B4C5] mb-1">
                     District
                   </label>
                   <input
@@ -562,11 +562,11 @@ export default function SatelliteIntelligence() {
                     value={newFarmDistrict}
                     onChange={(e) => setNewFarmDistrict(e.target.value)}
                     placeholder="e.g. Nashik"
-                    className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-forest-700 bg-gray-50 dark:bg-[#162a23] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF9800]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-[#A7B4C5] mb-1">
                     State
                   </label>
                   <input
@@ -574,16 +574,16 @@ export default function SatelliteIntelligence() {
                     value={newFarmState}
                     onChange={(e) => setNewFarmState(e.target.value)}
                     placeholder="e.g. Maharashtra"
-                    className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-forest-700 bg-gray-50 dark:bg-[#162a23] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full text-xs p-2.5 rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF9800]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-[#A7B4C5] mb-1">
                   Draw Farm Boundary on Satellite Map (or import KML/GeoJSON)
                 </label>
-                <p className="text-[11px] text-gray-500 mb-2">
+                <p className="text-[11px] text-gray-500 dark:text-[#A7B4C5] mb-2">
                   Click on the map to define the perimeter vertices. Geodesic area in acres will be calculated automatically.
                 </p>
                 <FarmMap
@@ -593,18 +593,18 @@ export default function SatelliteIntelligence() {
                 />
               </div>
 
-              <div className="pt-2 flex justify-end gap-3 border-t border-gray-100 dark:border-forest-800">
+              <div className="pt-2 flex justify-end gap-3 border-t border-gray-100 dark:border-[#1E293B]">
                 <button
                   type="button"
                   onClick={() => setShowAddFarmModal(false)}
-                  className="px-4 py-2 border border-gray-200 dark:border-forest-700 text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl hover:bg-gray-50 transition"
+                  className="px-4 py-2 border border-gray-200 dark:border-[#1E293B] text-gray-700 dark:text-[#A7B4C5] text-xs font-semibold rounded-xl hover:bg-gray-100 dark:hover:bg-[#1E293B] transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={creatingFarm}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition disabled:opacity-50"
+                  className="btn-primary px-5 py-2 text-xs shadow-sm transition disabled:opacity-50"
                 >
                   {creatingFarm ? 'Saving Plot…' : 'Save & Analyze Plot'}
                 </button>

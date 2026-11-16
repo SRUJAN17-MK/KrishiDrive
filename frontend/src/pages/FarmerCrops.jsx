@@ -32,7 +32,7 @@ function Field({ label, children }) {
   )
 }
 
-const inputClass = 'w-full rounded-xl border border-gray-200 dark:border-[#274a3d] bg-gray-50 dark:bg-[#162a23] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500'
+const inputClass = 'w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#FF9800]'
 
 export default function FarmerCrops() {
   const { t } = useLanguage()
@@ -146,44 +146,44 @@ export default function FarmerCrops() {
         subtitle="Track area, expected quantity and harvest dates. Values are your own records plus an explicitly rule-based estimate."
         actions={
           <>
-            <Link to="/ai-lab" className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 dark:border-emerald-800 px-3 py-2 text-xs font-bold text-emerald-800 dark:text-emerald-300"><Leaf size={15} /> {t('farmer.diseaseDetect')}</Link>
-            <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-3 py-2 text-xs font-bold text-white"><Plus size={15} /> {t('farmer.addCrop')}</button>
+            <Link to="/ai-lab" className="btn-secondary inline-flex items-center gap-2 text-xs py-2 px-3"><Leaf size={15} /> {t('farmer.diseaseDetect')}</Link>
+            <button onClick={openCreate} className="btn-primary inline-flex items-center gap-2 text-xs py-2 px-3"><Plus size={15} /> {t('farmer.addCrop')}</button>
           </>
         }
       />
 
       <div className="grid sm:grid-cols-3 gap-3 mb-5">
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">Crops</p><p className="text-2xl font-extrabold">{crops.length}</p></div>
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">Total area</p><p className="text-2xl font-extrabold">{totals.acreage.toFixed(1)} <span className="text-xs text-gray-400">{t('common.acre')}</span></p></div>
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4"><p className="text-[10px] uppercase font-bold text-gray-400">Indicative value</p><p className="text-2xl font-extrabold">{formatINR(totals.value)}</p><p className="text-[10px] text-gray-400">your saved rate × expected quantity</p></div>
+        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4"><p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">Crops</p><p className="text-2xl font-extrabold text-gray-900 dark:text-[#F8FAFC]">{crops.length}</p></div>
+        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4"><p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">Total area</p><p className="text-2xl font-extrabold text-gray-900 dark:text-[#F8FAFC]">{totals.acreage.toFixed(1)} <span className="text-xs text-gray-400 dark:text-[#A7B4C5]">{t('common.acre')}</span></p></div>
+        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4"><p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">Indicative value</p><p className="text-2xl font-extrabold text-[#FF9800]">{formatINR(totals.value)}</p><p className="text-[10px] text-gray-400 dark:text-[#A7B4C5]">your saved rate × expected quantity</p></div>
       </div>
 
       {loading && <LoadingBlock />}
-      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 mb-4">{error} <button onClick={load} className="font-bold underline">{t('common.retry')}</button></div>}
+      {error && <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/20 p-4 text-xs text-red-700 dark:text-red-400 mb-4">{error} <button onClick={load} className="font-bold underline">{t('common.retry')}</button></div>}
 
       {!loading && crops.length === 0 && (
-        <EmptyState title={t('farmer.noCrops')} action={<button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white"><Plus size={14} /> {t('farmer.addCrop')}</button>} />
+        <EmptyState title={t('farmer.noCrops')} action={<button onClick={openCreate} className="btn-primary inline-flex items-center gap-2 text-xs py-2 px-3"><Plus size={14} /> {t('farmer.addCrop')}</button>} />
       )}
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
         {crops.map((crop) => (
-          <article key={crop.id} className="rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-4">
+          <article key={crop.id} className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h2 className="text-base font-extrabold text-gray-900 dark:text-white">{crop.name}</h2>
-                <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5"><MapPin size={11} /> {crop.location || '—'}</p>
+                <h2 className="text-base font-extrabold text-gray-900 dark:text-[#F8FAFC]">{crop.name}</h2>
+                <p className="text-[11px] text-gray-500 dark:text-[#A7B4C5] flex items-center gap-1 mt-0.5"><MapPin size={11} className="text-[#0785E8]" /> {crop.location || '—'}</p>
               </div>
               <StatusBadge status={crop.status} />
             </div>
             <div className="grid grid-cols-2 gap-2 mt-3 text-[11px]">
-              <div className="rounded-lg bg-gray-50 dark:bg-[#162a23] p-2"><span className="text-gray-400">Area</span><p className="font-bold">{crop.acreage} {t('common.acre')}</p></div>
-              <div className="rounded-lg bg-gray-50 dark:bg-[#162a23] p-2"><span className="text-gray-400">Expected</span><p className="font-bold">{Number(crop.expected_qty).toLocaleString()} {crop.unit}</p></div>
-              <div className="rounded-lg bg-gray-50 dark:bg-[#162a23] p-2"><span className="text-gray-400">Planted</span><p className="font-bold">{crop.planting_date || '—'}</p></div>
-              <div className="rounded-lg bg-gray-50 dark:bg-[#162a23] p-2"><span className="text-gray-400">Rate</span><p className="font-bold">{formatINR(crop.estimated_rate_kg)}{crop.unit ? `/${crop.unit}` : ''}</p></div>
+              <div className="rounded-lg bg-gray-50 dark:bg-[#07172F] p-2 border border-gray-100 dark:border-[#1E293B]/50"><span className="text-gray-400 dark:text-[#A7B4C5]">Area</span><p className="font-bold text-gray-900 dark:text-[#F8FAFC]">{crop.acreage} {t('common.acre')}</p></div>
+              <div className="rounded-lg bg-gray-50 dark:bg-[#07172F] p-2 border border-gray-100 dark:border-[#1E293B]/50"><span className="text-gray-400 dark:text-[#A7B4C5]">Expected</span><p className="font-bold text-gray-900 dark:text-[#F8FAFC]">{Number(crop.expected_qty).toLocaleString()} {crop.unit}</p></div>
+              <div className="rounded-lg bg-gray-50 dark:bg-[#07172F] p-2 border border-gray-100 dark:border-[#1E293B]/50"><span className="text-gray-400 dark:text-[#A7B4C5]">Planted</span><p className="font-bold text-gray-900 dark:text-[#F8FAFC]">{crop.planting_date || '—'}</p></div>
+              <div className="rounded-lg bg-gray-50 dark:bg-[#07172F] p-2 border border-gray-100 dark:border-[#1E293B]/50"><span className="text-gray-400 dark:text-[#A7B4C5]">Rate</span><p className="font-bold text-[#FF9800]">{formatINR(crop.estimated_rate_kg)}{crop.unit ? `/${crop.unit}` : ''}</p></div>
             </div>
             <div className="flex items-center gap-1.5 mt-3">
-              <button onClick={() => runForecast(crop)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 px-2 py-1.5 text-[11px] font-bold"><TrendingUp size={13} /> {t('farmer.forecast')}</button>
-              <button onClick={() => openEdit(crop)} aria-label={`Edit ${crop.name}`} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><Edit3 size={14} /></button>
+              <button onClick={() => runForecast(crop)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#064FAE]/15 text-[#064FAE] dark:text-[#0785E8] hover:bg-[#064FAE]/25 px-2 py-1.5 text-[11px] font-bold"><TrendingUp size={13} /> {t('farmer.forecast')}</button>
+              <button onClick={() => openEdit(crop)} aria-label={`Edit ${crop.name}`} className="p-1.5 rounded-lg text-gray-500 dark:text-[#A7B4C5] hover:bg-gray-100 dark:hover:bg-[#1E293B]"><Edit3 size={14} /></button>
               <button onClick={() => remove(crop)} aria-label={`Delete ${crop.name}`} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"><Trash2 size={14} /></button>
             </div>
           </article>
@@ -191,42 +191,42 @@ export default function FarmerCrops() {
       </div>
 
       {(aiLoading || aiResult || aiError) && (
-        <section className="mt-6 rounded-2xl border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] p-5">
+        <section className="mt-6 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold flex items-center gap-2"><Brain size={16} className="text-emerald-600" /> {t('farmer.forecastTitle')}</h2>
-            <button onClick={() => { setAiResult(null); setAiError('') }} aria-label={t('common.close')} className="p-1.5 text-gray-400"><X size={16} /></button>
+            <h2 className="text-sm font-bold flex items-center gap-2 text-gray-900 dark:text-[#F8FAFC]"><Brain size={16} className="text-[#0785E8]" /> {t('farmer.forecastTitle')}</h2>
+            <button onClick={() => { setAiResult(null); setAiError('') }} aria-label={t('common.close')} className="p-1.5 text-gray-400 hover:text-white"><X size={16} /></button>
           </div>
           {aiLoading && <LoadingBlock label="Estimating with rule-based agronomy…" />}
           {aiError && <p className="mt-3 text-xs text-red-600 flex gap-2"><AlertCircle size={14} /> {aiError}</p>}
           {aiResult && (
             <div className="mt-3 space-y-3">
               <div className="grid sm:grid-cols-3 gap-2">
-                <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 p-3"><p className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400">Estimated yield</p><p className="text-xl font-extrabold">{aiResult.predicted_yield.toLocaleString()} kg</p></div>
-                <div className="rounded-xl bg-gray-50 dark:bg-[#162a23] p-3"><p className="text-[10px] uppercase font-bold text-gray-400">Harvest window</p><p className="text-xs font-bold">{aiResult.harvest_schedule.earliest_harvest_date} → {aiResult.harvest_schedule.harvest_window_close}</p></div>
-                <div className="rounded-xl bg-gray-50 dark:bg-[#162a23] p-3"><p className="text-[10px] uppercase font-bold text-gray-400">Recommended vehicle</p><p className="text-xs font-bold">{aiResult.transport_logistics.recommended_vehicle}</p></div>
+                <div className="rounded-xl bg-[#064FAE]/10 dark:bg-[#064FAE]/20 border border-[#064FAE]/30 p-3"><p className="text-[10px] uppercase font-bold text-[#0785E8]">Estimated yield</p><p className="text-xl font-extrabold text-gray-900 dark:text-white">{aiResult.predicted_yield.toLocaleString()} kg</p></div>
+                <div className="rounded-xl bg-gray-50 dark:bg-[#07172F] border border-gray-100 dark:border-[#1E293B] p-3"><p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">Harvest window</p><p className="text-xs font-bold text-gray-900 dark:text-white">{aiResult.harvest_schedule.earliest_harvest_date} → {aiResult.harvest_schedule.harvest_window_close}</p></div>
+                <div className="rounded-xl bg-gray-50 dark:bg-[#07172F] border border-gray-100 dark:border-[#1E293B] p-3"><p className="text-[10px] uppercase font-bold text-gray-400 dark:text-[#A7B4C5]">Recommended vehicle</p><p className="text-xs font-bold text-gray-900 dark:text-white">{aiResult.transport_logistics.recommended_vehicle}</p></div>
               </div>
-              <div className="rounded-xl border border-gray-100 dark:border-[#274a3d] p-3 text-xs space-y-1">
-                <p className="flex justify-between gap-3"><span className="text-gray-500">Gross revenue estimate</span><span className="font-semibold text-right">{aiResult.economic_forecast.projected_gross_revenue}</span></p>
-                <p className="flex justify-between gap-3"><span className="text-gray-500">Net profit estimate</span><span className="font-semibold text-right">{aiResult.economic_forecast.estimated_net_profit}</span></p>
-                <p className="flex justify-between gap-3"><span className="text-gray-500">Indicative rate</span><span className="font-semibold text-right">{aiResult.economic_forecast.reference_mandi_rate}</span></p>
+              <div className="rounded-xl border border-gray-100 dark:border-[#1E293B] bg-gray-50/50 dark:bg-[#07172F]/50 p-3 text-xs space-y-1">
+                <p className="flex justify-between gap-3"><span className="text-gray-500 dark:text-[#A7B4C5]">Gross revenue estimate</span><span className="font-semibold text-right text-gray-900 dark:text-white">{aiResult.economic_forecast.projected_gross_revenue}</span></p>
+                <p className="flex justify-between gap-3"><span className="text-gray-500 dark:text-[#A7B4C5]">Net profit estimate</span><span className="font-semibold text-right text-[#FF9800]">{aiResult.economic_forecast.estimated_net_profit}</span></p>
+                <p className="flex justify-between gap-3"><span className="text-gray-500 dark:text-[#A7B4C5]">Indicative rate</span><span className="font-semibold text-right text-gray-900 dark:text-white">{aiResult.economic_forecast.reference_mandi_rate}</span></p>
               </div>
-              <p className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-3 text-[11px] text-amber-800 dark:text-amber-300 flex gap-2"><AlertCircle size={14} className="shrink-0" /> {t('farmer.forecastNote')} {aiResult.engine_info.note}</p>
+              <p className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 p-3 text-[11px] text-amber-800 dark:text-amber-300 flex gap-2"><AlertCircle size={14} className="shrink-0" /> {t('farmer.forecastNote')} {aiResult.engine_info.note}</p>
             </div>
           )}
         </section>
       )}
 
-      <div className="mt-5 rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <p className="text-xs text-emerald-900 dark:text-emerald-200 flex items-center gap-2"><Leaf size={15} /> Sick plant? The ONNX model checks tomato, potato and pepper leaves.</p>
-        <Link to="/ai-lab" className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">Open leaf check <ArrowRight size={13} /></Link>
+      <div className="mt-5 rounded-2xl border border-[#064FAE]/30 bg-[#064FAE]/10 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <p className="text-xs text-gray-800 dark:text-[#F8FAFC] flex items-center gap-2"><Leaf size={15} className="text-[#0785E8]" /> Sick plant? The ONNX model checks tomato, potato and pepper leaves.</p>
+        <Link to="/ai-lab" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0785E8] hover:text-[#FF9800]">Open leaf check <ArrowRight size={13} /></Link>
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm grid place-items-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-label={editing ? 'Edit crop' : 'Add crop'}>
-          <form onSubmit={save} className="w-full max-w-2xl rounded-2xl bg-white dark:bg-[#12211c] p-5 shadow-2xl my-8">
+        <div className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm grid place-items-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-label={editing ? 'Edit crop' : 'Add crop'}>
+          <form onSubmit={save} className="w-full max-w-2xl rounded-2xl bg-white dark:bg-[#111827] border border-gray-200 dark:border-[#1E293B] p-5 shadow-2xl my-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold">{editing ? `Edit ${editing.name}` : t('farmer.addCrop')}</h2>
-              <button type="button" onClick={() => setShowForm(false)} aria-label={t('common.close')} className="p-1.5 rounded-lg text-gray-400"><X size={17} /></button>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-[#F8FAFC]">{editing ? `Edit ${editing.name}` : t('farmer.addCrop')}</h2>
+              <button type="button" onClick={() => setShowForm(false)} aria-label={t('common.close')} className="p-1.5 rounded-lg text-gray-400 hover:text-white"><X size={17} /></button>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label={t('farmer.cropName')}><input required maxLength={100} className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -241,8 +241,8 @@ export default function FarmerCrops() {
               <Field label={t('common.quantity') + ' unit'}><select className={inputClass} value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}><option value="kg">kg</option><option value="quintal">quintal</option><option value="ton">ton</option></select></Field>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-xl border border-gray-200 dark:border-[#274a3d] px-4 py-2 text-xs font-semibold">{t('common.cancel')}</button>
-              <button type="submit" disabled={saving} className="rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 px-4 py-2 text-xs font-bold text-white inline-flex items-center gap-2">{saving ? t('common.loading') : <><CheckCircle2 size={14} /> {t('common.save')}</>}</button>
+              <button type="button" onClick={() => setShowForm(false)} className="rounded-xl border border-gray-200 dark:border-[#1E293B] px-4 py-2 text-xs font-semibold text-gray-700 dark:text-[#A7B4C5] hover:bg-gray-100 dark:hover:bg-[#1E293B]">{t('common.cancel')}</button>
+              <button type="submit" disabled={saving} className="btn-primary px-4 py-2 text-xs inline-flex items-center gap-2">{saving ? t('common.loading') : <><CheckCircle2 size={14} /> {t('common.save')}</>}</button>
             </div>
           </form>
         </div>

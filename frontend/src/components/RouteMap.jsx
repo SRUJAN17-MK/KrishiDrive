@@ -8,8 +8,8 @@ import {
 
 // SVG Marker Creators - zero external image asset dependencies
 function createPinIcon(type, number = null) {
-  let bgColor = '#059669' // emerald-600
-  let strokeColor = '#065f46' // emerald-800
+  let bgColor = '#064FAE' // electric blue
+  let strokeColor = '#092147' // midnight-800
   let label = 'P'
 
   if (type === 'destination') {
@@ -198,11 +198,11 @@ export default function RouteMap({
       routeGroup.addLayer(poly)
     })
 
-    // 2. Draw Primary Route (emerald)
+    // 2. Draw Primary Route (electric blue)
     if (primaryPoints.length >= 2) {
       const latLngs = primaryPoints.map((p) => [p.lat, p.lng])
       const primaryPoly = L.polyline(latLngs, {
-        color: '#059669',
+        color: '#064FAE',
         weight: 5,
         opacity: 0.95,
         lineCap: 'round',
@@ -210,7 +210,7 @@ export default function RouteMap({
       })
       primaryPoly.bindPopup(`
         <div class="text-xs p-1">
-          <strong class="text-emerald-700">Primary Dispatch Route</strong>
+          <strong class="text-[#064FAE]">Primary Dispatch Route</strong>
           <div>${label}</div>
           <div>Waypoints: <strong>${primaryPoints.length}</strong></div>
         </div>
@@ -226,7 +226,7 @@ export default function RouteMap({
       })
       startMarker.bindPopup(`
         <div class="text-xs p-1">
-          <div class="font-bold text-emerald-800">📦 Pickup Origin</div>
+          <div class="font-bold text-[#064FAE]">📦 Pickup Origin</div>
           <div class="mt-1 font-semibold">${pickup || 'Origin Gate'}</div>
           <div class="text-[10px] text-gray-500">${startPt.lat.toFixed(4)}, ${startPt.lng.toFixed(4)}</div>
         </div>
@@ -309,21 +309,21 @@ export default function RouteMap({
 
   return (
     <div
-      className={`relative rounded-2xl overflow-hidden border border-gray-200 dark:border-[#1e362e] bg-white dark:bg-[#12211c] shadow-sm transition-all ${
+      className={`relative rounded-2xl overflow-hidden border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#07172F] shadow-sm transition-all ${
         isFullscreen ? 'fixed inset-4 z-[9999] shadow-2xl' : ''
       }`}
     >
       {/* Map Header Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white/95 dark:bg-[#12211c]/95 backdrop-blur-md border-b border-gray-200 dark:border-[#1e362e] z-10 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white/95 dark:bg-[#07172F]/95 backdrop-blur-md border-b border-gray-200 dark:border-[#1E293B] z-10 text-xs">
         <div className="flex items-center gap-1.5">
-          <div className="flex rounded-lg border border-gray-200 dark:border-[#274a3d] overflow-hidden bg-gray-50 dark:bg-[#162a23]">
+          <div className="flex rounded-lg border border-gray-200 dark:border-[#1E293B] overflow-hidden bg-gray-50 dark:bg-[#07172F]">
             <button
               type="button"
               onClick={() => toggleBaseLayer('streets')}
               className={`px-2.5 py-1 font-semibold transition flex items-center gap-1 text-[11px] ${
                 activeLayer === 'streets'
-                  ? 'bg-emerald-700 text-white'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-emerald-600'
+                  ? 'bg-electric text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-bright'
               }`}
             >
               <Compass size={13} /> Roads (OSM)
@@ -333,8 +333,8 @@ export default function RouteMap({
               onClick={() => toggleBaseLayer('satellite')}
               className={`px-2.5 py-1 font-semibold transition flex items-center gap-1 text-[11px] ${
                 activeLayer === 'satellite'
-                  ? 'bg-emerald-700 text-white'
-                  : 'text-gray-600 dark:text-gray-300 hover:text-emerald-600'
+                  ? 'bg-electric text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-bright'
               }`}
             >
               <Layers size={13} /> Satellite
@@ -345,7 +345,7 @@ export default function RouteMap({
             type="button"
             onClick={handleFitRoute}
             title="Fit Route Bounds"
-            className="p-1.5 rounded-lg border border-gray-200 dark:border-[#274a3d] bg-white dark:bg-[#162a23] text-gray-700 dark:text-gray-200 hover:border-emerald-500 hover:text-emerald-600 transition flex items-center gap-1 text-[11px]"
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] text-gray-700 dark:text-gray-200 hover:border-bright hover:text-bright transition flex items-center gap-1 text-[11px]"
           >
             <RotateCcw size={13} /> Fit Route
           </button>
@@ -362,7 +362,7 @@ export default function RouteMap({
             type="button"
             onClick={toggleFullscreen}
             title={isFullscreen ? 'Exit Fullscreen' : 'Expand Map'}
-            className="p-1.5 rounded-lg border border-gray-200 dark:border-[#274a3d] bg-white dark:bg-[#162a23] text-gray-700 dark:text-gray-200 hover:border-emerald-500 transition"
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] text-gray-700 dark:text-gray-200 hover:border-bright transition"
           >
             {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
@@ -381,10 +381,10 @@ export default function RouteMap({
       />
 
       {/* Map Legend Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2 text-[11px] font-semibold text-gray-600 dark:text-gray-300 border-t border-gray-200 dark:border-[#1e362e] bg-gray-50/90 dark:bg-[#162a23]/90">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2 text-[11px] font-semibold text-gray-600 dark:text-gray-300 border-t border-gray-200 dark:border-[#1E293B] bg-gray-50/90 dark:bg-[#111827]/90">
         <div className="flex flex-wrap items-center gap-4">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-4 rounded-full bg-emerald-600" /> Primary Road Route
+            <span className="h-2 w-4 rounded-full bg-electric" /> Primary Road Route
           </span>
           {parsedAlternatives.length > 0 && (
             <span className="inline-flex items-center gap-1.5">
@@ -392,10 +392,10 @@ export default function RouteMap({
             </span>
           )}
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-600" /> Pickup
+            <span className="h-2 w-2 rounded-full bg-electric" /> Pickup
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-amber-600" /> Destination
+            <span className="h-2 w-2 rounded-full bg-amber" /> Destination
           </span>
         </div>
         <div className="text-[10px] text-gray-400">

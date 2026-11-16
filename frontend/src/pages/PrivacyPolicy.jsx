@@ -7,23 +7,23 @@ export default function PrivacyPolicy() {
     <div className="max-w-3xl mx-auto px-4 py-12">
       {/* Header */}
       <div className="mb-10 text-center">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-full text-xs font-bold mb-4 border border-emerald-200 dark:border-emerald-800">
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#064FAE]/20 text-[#0785E8] rounded-full text-xs font-bold mb-4 border border-[#064FAE]/40">
           <ShieldCheck size={14} /> Privacy Policy
         </div>
-        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-3">
+        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-[#F8FAFC] mb-3">
           KrishiDrive Privacy Policy
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm text-gray-500 dark:text-[#A7B4C5]">
           Last updated: November 2026 · Version 3.0
         </p>
       </div>
 
-      <div className="prose prose-sm max-w-none dark:prose-invert space-y-8 text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+      <div className="prose prose-sm max-w-none dark:prose-invert space-y-8 text-gray-700 dark:text-[#A7B4C5] text-sm leading-relaxed">
 
         {/* Section 1 */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <Eye size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <Eye size={18} className="text-[#0785E8] shrink-0" />
             <h2 className="text-base font-bold text-gray-900 dark:text-white">1. What Data We Collect</h2>
           </div>
           <div className="space-y-3 ml-7">
@@ -53,13 +53,13 @@ export default function PrivacyPolicy() {
         {/* Section 2 */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <Database size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <Database size={18} className="text-[#0785E8] shrink-0" />
             <h2 className="text-base font-bold text-gray-900 dark:text-white">2. How We Store Data</h2>
           </div>
           <div className="space-y-2 ml-7">
             <p>All data is stored in a SQLite database (WAL journal mode) on the server hosting your KrishiDrive deployment. Data is not sent to any third-party cloud database or analytics service by default.</p>
             <p>Passwords are hashed with bcrypt (12 rounds). Session tokens are signed JSON Web Tokens (JWT) with a 7-day expiry.</p>
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 mt-2">
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-xl text-xs text-amber-800 dark:text-amber-300 mt-2">
               <strong>Important:</strong> KrishiDrive is an open-source project. If you self-host this application, you are responsible for securing the host server, keeping your backend <code>.env</code> file secret, and maintaining database backups.
             </div>
           </div>
@@ -68,7 +68,7 @@ export default function PrivacyPolicy() {
         {/* Section 3 */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <Server size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <Server size={18} className="text-[#0785E8] shrink-0" />
             <h2 className="text-base font-bold text-gray-900 dark:text-white">3. Third-Party Services &amp; APIs</h2>
           </div>
           <div className="space-y-2 ml-7">
@@ -76,13 +76,13 @@ export default function PrivacyPolicy() {
             <ul className="list-disc list-inside space-y-1 text-xs">
               <li>
                 <strong>Open-Meteo</strong> (open-meteo.com) — Latitude &amp; longitude sent to fetch weather and soil moisture telemetry.{' '}
-                <a href="https://open-meteo.com/en/terms" target="_blank" rel="noreferrer" className="text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-0.5">
+                <a href="https://open-meteo.com/en/terms" target="_blank" rel="noreferrer" className="text-[#0785E8] hover:underline inline-flex items-center gap-0.5">
                   Terms <ExternalLink size={10} />
                 </a>
               </li>
               <li>
                 <strong>OSRM</strong> (router.project-osrm.org) — Coordinate pairs sent to calculate road routing distance and time. No personal identifiers are included.{' '}
-                <a href="https://project-osrm.org" target="_blank" rel="noreferrer" className="text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-0.5">
+                <a href="https://project-osrm.org" target="_blank" rel="noreferrer" className="text-[#0785E8] hover:underline inline-flex items-center gap-0.5">
                   Info <ExternalLink size={10} />
                 </a>
               </li>
@@ -100,7 +100,7 @@ export default function PrivacyPolicy() {
         {/* Section 4 */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <Lock size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <Lock size={18} className="text-[#0785E8] shrink-0" />
             <h2 className="text-base font-bold text-gray-900 dark:text-white">4. Your Rights</h2>
           </div>
           <div className="space-y-2 ml-7">
@@ -116,7 +116,7 @@ export default function PrivacyPolicy() {
         {/* Section 5 */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <Mail size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <Mail size={18} className="text-[#0785E8] shrink-0" />
             <h2 className="text-base font-bold text-gray-900 dark:text-white">5. Contact</h2>
           </div>
           <div className="ml-7 space-y-2">
@@ -125,19 +125,19 @@ export default function PrivacyPolicy() {
               href="https://github.com/SRUJAN17-MK/KrishiDrive"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
+              className="inline-flex items-center gap-1.5 text-[#0785E8] hover:text-[#FF9800] font-semibold hover:underline"
             >
               github.com/SRUJAN17-MK/KrishiDrive <ExternalLink size={13} />
             </a>
-            <p className="text-xs text-gray-500 dark:text-gray-400">We are committed to responding to privacy inquiries within 7 business days.</p>
+            <p className="text-xs text-gray-500 dark:text-[#A7B4C5]">We are committed to responding to privacy inquiries within 7 business days.</p>
           </div>
         </section>
 
         {/* Footer links */}
-        <div className="pt-6 border-t border-gray-200 dark:border-forest-800 flex gap-4 text-xs">
-          <Link to="/terms" className="text-emerald-700 dark:text-emerald-400 hover:underline">Terms of Service</Link>
-          <Link to="/system-status" className="text-emerald-700 dark:text-emerald-400 hover:underline">System Status</Link>
-          <Link to="/" className="text-emerald-700 dark:text-emerald-400 hover:underline">Home</Link>
+        <div className="pt-6 border-t border-gray-200 dark:border-[#1E293B] flex gap-4 text-xs">
+          <Link to="/terms" className="text-[#0785E8] hover:text-[#FF9800] hover:underline font-semibold">Terms of Service</Link>
+          <Link to="/system-status" className="text-[#0785E8] hover:text-[#FF9800] hover:underline font-semibold">System Status</Link>
+          <Link to="/" className="text-[#0785E8] hover:text-[#FF9800] hover:underline font-semibold">Home</Link>
         </div>
       </div>
     </div>

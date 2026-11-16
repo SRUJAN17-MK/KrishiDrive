@@ -5,61 +5,127 @@ export default {
   theme: {
     extend: {
       colors: {
-        forest: {
-          50: '#f2f9f5',
-          100: '#e1f2e8',
-          200: '#c4e4d2',
-          300: '#97ceb2',
-          400: '#64b28c',
-          500: '#3e956e',
-          600: '#2d7756',
-          700: '#255f46',
-          800: '#1b4332',
-          900: '#153629',
-          950: '#0b1e17',
+        // KrishiDrive Modern Agri-Tech Palette
+        midnight: {
+          DEFAULT: '#07172F',
+          50: '#E6EDF5',
+          100: '#C5D5E8',
+          200: '#91B0D6',
+          300: '#5D8BC4',
+          400: '#306AB5',
+          500: '#064FAE', // Electric Blue
+          600: '#05408F',
+          700: '#043270',
+          800: '#092147',
+          900: '#07172F', // Midnight Navy Core
+          950: '#030B17'
         },
-        agri: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
+        electric: {
+          DEFAULT: '#064FAE',
+          50: '#EBF4FF',
+          100: '#D6E8FF',
+          200: '#ADCFFF',
+          300: '#75AFFF',
+          400: '#388BFF',
+          500: '#064FAE',
+          600: '#054294',
+          700: '#04367A',
+          800: '#072E63',
+          900: '#0A254E'
         },
-        gold: {
-          50: '#fffbeb',
-          100: '#fef3c7',
-          200: '#fde68a',
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f59e0b',
-          600: '#d97706',
-          700: '#b45309',
-          800: '#92400e',
-          900: '#78350f',
+        bright: {
+          DEFAULT: '#0785E8',
+          50: '#F0F8FF',
+          100: '#E0F1FE',
+          200: '#BAE2FD',
+          300: '#7DCCFC',
+          400: '#38B1FA',
+          500: '#0785E8',
+          600: '#0670C4',
+          700: '#055BA0',
+          800: '#084D83',
+          900: '#0C416C'
+        },
+        amber: {
+          DEFAULT: '#FF9800',
+          50: '#FFF8E1',
+          100: '#FFECB3',
+          200: '#FFE082',
+          300: '#FFD54F',
+          400: '#FFCA28',
+          500: '#FF9800', // Golden Amber
+          600: '#FB8C00',
+          700: '#F57C00',
+          800: '#EF6C00',
+          900: '#E65100'
+        },
+        warmgold: {
+          DEFAULT: '#F5A623',
+          400: '#F7B74E',
+          500: '#F5A623',
+          600: '#DC8E12',
+          700: '#B8740B'
         },
         charcoal: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
+          DEFAULT: '#111827',
+          50: '#F8FAFC',
+          100: '#F1F5F9',
+          200: '#E2E8F0',
+          300: '#CBD5E1',
+          400: '#94A3B8',
+          500: '#64748B',
           600: '#475569',
           700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617',
+          800: '#1E293B',
+          900: '#111827', // Charcoal Panel Core
+          950: '#0B0F19'
+        },
+        muted: '#A7B4C5',
+        offwhite: '#F8FAFC',
+        // Compatibility bridge: map forest & agri to modern electric/navy so no existing class breaks
+        forest: {
+          50: '#E6EDF5',
+          100: '#C5D5E8',
+          200: '#91B0D6',
+          300: '#5D8BC4',
+          400: '#306AB5',
+          500: '#064FAE',
+          600: '#05408F',
+          700: '#043270',
+          800: '#092147',
+          900: '#07172F',
+          950: '#030B17'
+        },
+        agri: {
+          50: '#EEF7FF',
+          100: '#D9EEFF',
+          200: '#B8DEFF',
+          300: '#85C7FE',
+          400: '#4CAAFB',
+          500: '#0785E8',
+          600: '#066EC2',
+          700: '#05579C',
+          800: '#07457A',
+          900: '#07172F'
+        },
+        gold: {
+          50: '#FFF8E1',
+          100: '#FFECB3',
+          200: '#FFE082',
+          300: '#FFD54F',
+          400: '#FFCA28',
+          500: '#FF9800',
+          600: '#FB8C00',
+          700: '#F57C00',
+          800: '#EF6C00',
+          900: '#E65100'
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-      },
-    },
+        sans: ['Inter', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif']
+      }
+    }
   },
-  plugins: [],
+  plugins: []
 }

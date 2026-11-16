@@ -7,13 +7,13 @@ export default function TermsPage() {
     <div className="max-w-3xl mx-auto px-4 py-12">
       {/* Header */}
       <div className="mb-10 text-center">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 rounded-full text-xs font-bold mb-4 border border-blue-200 dark:border-blue-800">
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#064FAE]/20 text-[#0785E8] rounded-full text-xs font-bold mb-4 border border-[#064FAE]/40">
           <FileText size={14} /> Terms of Service
         </div>
-        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-3">
+        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-[#F8FAFC] mb-3">
           KrishiDrive Terms of Service
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm text-gray-500 dark:text-[#A7B4C5]">
           Last updated: November 2026 · Version 3.0
         </p>
       </div>
@@ -82,7 +82,7 @@ export default function TermsPage() {
               href="https://github.com/SRUJAN17-MK/KrishiDrive"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold hover:underline text-xs"
+              className="inline-flex items-center gap-1.5 text-[#0785E8] hover:text-[#FF9800] font-semibold hover:underline text-xs"
             >
               github.com/SRUJAN17-MK/KrishiDrive <ExternalLink size={11} />
             </a>
@@ -90,11 +90,11 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <div className="flex items-start gap-3 p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-2xl">
-            <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-4 bg-[#064FAE]/10 dark:bg-[#064FAE]/20 border border-[#064FAE]/30 rounded-2xl">
+            <CheckCircle2 size={18} className="text-[#0785E8] shrink-0 mt-0.5" />
             <div>
-              <h2 className="text-base font-bold text-emerald-900 dark:text-emerald-200 mb-2">7. What We Promise</h2>
-              <ul className="text-xs text-emerald-800 dark:text-emerald-300 list-disc list-inside space-y-1">
+              <h2 className="text-base font-bold text-gray-900 dark:text-[#F8FAFC] mb-2">7. What We Promise</h2>
+              <ul className="text-xs text-gray-700 dark:text-[#A7B4C5] list-disc list-inside space-y-1">
                 <li>We will never display fabricated live prices or simulated AI confidence scores</li>
                 <li>When an external API is unavailable, we will clearly label data as "Unavailable" — not substitute fake data</li>
                 <li>AI inference execution provider (CPU / NPU) will be accurately reported</li>
@@ -116,10 +116,10 @@ export default function TermsPage() {
         </section>
 
         {/* Footer links */}
-        <div className="pt-6 border-t border-gray-200 dark:border-forest-800 flex gap-4 text-xs">
-          <Link to="/privacy" className="text-emerald-700 dark:text-emerald-400 hover:underline">Privacy Policy</Link>
-          <Link to="/system-status" className="text-emerald-700 dark:text-emerald-400 hover:underline">System Status</Link>
-          <Link to="/" className="text-emerald-700 dark:text-emerald-400 hover:underline">Home</Link>
+        <div className="pt-6 border-t border-gray-200 dark:border-[#1E293B] flex gap-4 text-xs">
+          <Link to="/privacy" className="text-[#0785E8] hover:text-[#FF9800] hover:underline font-semibold">Privacy Policy</Link>
+          <Link to="/system-status" className="text-[#0785E8] hover:text-[#FF9800] hover:underline font-semibold">System Status</Link>
+          <Link to="/" className="text-[#0785E8] hover:text-[#FF9800] hover:underline font-semibold">Home</Link>
         </div>
       </div>
     </div>
