@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import {
   Sprout, Truck, Brain, CloudSun, Route as RouteIcon, Store,
-  ArrowRight, ShieldCheck, Cpu, WifiOff, Languages, CheckCircle2,
-  AlertTriangle, Gauge, Leaf, BarChart3, Mic, LogIn, UserCheck,
-  ChevronRight, Sparkles, KeyRound
+  ArrowRight, ShieldCheck, Cpu, CheckCircle2,
+  AlertTriangle, Leaf, LogIn, UserPlus
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
 import { api } from '../services/api'
-import toast from 'react-hot-toast'
+import { Card } from '../components/ui'
 
 function LiveEvidence() {
   const [info, setInfo] = useState(null)
@@ -22,52 +21,35 @@ function LiveEvidence() {
   const latency = bench?.latency_ms?.inference?.avg
   const measured = bench?.methodology?.measured_runs
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-2xl font-extrabold text-white">{info?.model?.classes ?? 38}</div>
-        <div className="text-[11px] text-muted mt-1">PlantVillage classes</div>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
+        <div className="text-xl sm:text-2xl font-extrabold text-white">{info?.model?.classes ?? 38}</div>
+        <div className="text-[10px] sm:text-[11px] text-muted mt-1">PlantVillage classes</div>
       </div>
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-2xl font-extrabold text-white">{latency ? `${latency} ms` : '3.3 ms'}</div>
-        <div className="text-[11px] text-muted mt-1">Measured CPU latency{measured ? ` · n=${measured}` : ''}</div>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
+        <div className="text-xl sm:text-2xl font-extrabold text-white">{latency ? `${latency} ms` : '3.3 ms'}</div>
+        <div className="text-[10px] sm:text-[11px] text-muted mt-1 truncate">CPU latency{measured ? ` (n=${measured})` : ''}</div>
       </div>
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-2xl font-extrabold text-white">23</div>
-        <div className="text-[11px] text-muted mt-1">Indian Languages</div>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
+        <div className="text-xl sm:text-2xl font-extrabold text-white">23</div>
+        <div className="text-[10px] sm:text-[11px] text-muted mt-1">Indian Languages</div>
       </div>
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-2xl font-extrabold text-amber">OSRM</div>
-        <div className="text-[11px] text-muted mt-1">Real road routing</div>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-4">
+        <div className="text-xl sm:text-2xl font-extrabold text-amber">OSRM</div>
+        <div className="text-[10px] sm:text-[11px] text-muted mt-1">Real road routing</div>
       </div>
     </div>
   )
 }
 
 export default function LandingPage() {
-  const { isAuthenticated, user, quickLogin } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const { t } = useLanguage()
-  const navigate = useNavigate()
-  const [loggingInRole, setLoggingInRole] = useState(null)
 
-  const dashboardPath = user?.role === 'driver' ? '/driver' : user?.role === 'admin' ? '/admin' : '/farmer'
-
-  const handlePortalLaunch = async (targetRole, demoUsername) => {
-    if (isAuthenticated && user?.role === targetRole) {
-      navigate(targetRole === 'driver' ? '/driver' : targetRole === 'admin' ? '/admin' : '/farmer')
-      return
-    }
-
-    setLoggingInRole(targetRole)
-    try {
-      await quickLogin(demoUsername, 'demo123')
-      toast.success(`Logged in to ${targetRole.toUpperCase()} Portal as ${demoUsername}!`)
-      navigate(targetRole === 'driver' ? '/driver' : targetRole === 'admin' ? '/admin' : '/farmer')
-    } catch (err) {
-      toast.error(err.message || 'Login failed. Try standard sign-in.')
-      navigate(`/login?role=${targetRole}`)
-    } finally {
-      setLoggingInRole(null)
-    }
+  // Redirect authenticated users immediately to their respective dashboard
+  if (isAuthenticated && user) {
+    const target = user.role === 'driver' ? '/driver' : user.role === 'admin' ? '/admin' : '/farmer'
+    return <Navigate to={target} replace />
   }
 
   const features = [
@@ -79,255 +61,130 @@ export default function LandingPage() {
     { icon: Store, title: 'Mandi Prices & Where to Sell', body: 'Agmarknet APMC wholesale benchmark prices and net realization profit rankings factoring in road transport costs.', link: '/market-prices' }
   ]
 
-  const portals = [
-    {
-      role: 'farmer',
-      title: 'Farmer Portal',
-      user: 'Ramesh Patel (farmer1)',
-      icon: Sprout,
-      color: 'from-[#064FAE] to-[#0785E8]',
-      badge: 'bg-blue-50 text-electric dark:bg-electric/20 dark:text-bright border-bright/30',
-      description: 'Manage crop lifecycle, map satellite plot boundaries, track Copernicus soil moisture, check mandi prices, and book produce transport.',
-      highlights: ['Crop Lifecycle & Land Records', 'Satellite Moisture & NDVI Advisory', 'Where to Sell Net Profit Calculator', 'Transport Booking & Delivery OTP'],
-      demoUser: 'farmer1',
-      path: '/farmer'
-    },
-    {
-      role: 'driver',
-      title: 'Driver / Transporter Portal',
-      user: 'Suresh Kumar (driver1)',
-      icon: Truck,
-      color: 'from-[#FF9800] to-[#F5A623]',
-      badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/40',
-      description: 'Find agricultural freight jobs, optimize road routes with OSRM, update shipment milestones, and confirm handovers with Delivery OTP.',
-      highlights: ['Available Farm Dispatch Jobs', 'OSRM Route Geometry & Turn Times', 'Driver Earnings & Fuel Ledger', '4-Digit Delivery OTP Handover'],
-      demoUser: 'driver1',
-      path: '/driver'
-    },
-    {
-      role: 'admin',
-      title: 'Admin Governance Portal',
-      user: 'Platform Admin (admin)',
-      icon: ShieldCheck,
-      color: 'from-[#07172F] to-[#064FAE]',
-      badge: 'bg-slate-100 text-midnight dark:bg-midnight-800 dark:text-bright-300 border-blue-400/30',
-      description: 'Complete system oversight: user verification, driver KYC compliance, real-time API latency monitoring, audit trails, and farmer support desk.',
-      highlights: ['User & Driver Verification (KYC)', 'Live System Integration Status Probe', 'Filterable Immutable Audit Trail', 'Farmer Support Desk Governance'],
-      demoUser: 'admin',
-      path: '/admin'
-    }
-  ]
-
   return (
-    <div className="bg-slate-50 dark:bg-[#07172F]">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#07172F] via-[#0A2244] to-[#07172F] text-white">
-        <div className="absolute inset-0 opacity-25" aria-hidden="true">
-          <div className="absolute -top-24 -right-20 h-96 w-96 rounded-full bg-[#0785E8] blur-3xl opacity-30" />
-          <div className="absolute bottom-0 left-1/4 h-80 w-80 rounded-full bg-[#FF9800] blur-3xl opacity-20" />
+    <div className="bg-slate-50 dark:bg-midnight transition-colors duration-200">
+      {/* App-Style Welcome Hero Section */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-midnight via-[#0A2244] to-midnight text-white py-14 sm:py-24 px-4">
+        <div className="absolute inset-0 opacity-25 pointer-events-none" aria-hidden="true">
+          <div className="absolute -top-24 -right-20 h-96 w-96 rounded-full bg-bright blur-3xl opacity-30" />
+          <div className="absolute bottom-0 left-1/4 h-80 w-80 rounded-full bg-amber blur-3xl opacity-20" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 py-16 sm:py-24 grid lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-bright/40 bg-bright/10 px-3 py-1.5 text-[11px] font-bold text-bright-300 mb-5">
-              <ShieldCheck size={14} className="text-amber" /> {t('landing.badge')}
+
+        <div className="relative max-w-4xl mx-auto text-center flex flex-col items-center">
+          {/* Logo & Platform Tag */}
+          <div className="inline-flex items-center gap-3 mb-6 group">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-midnight-800 border border-white/10 flex items-center justify-center text-white shadow-xl shadow-midnight-950/50 group-hover:scale-105 transition-transform">
+              <Sprout size={32} className="text-amber" />
             </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.08]">
-              {t('landing.heroTitle')}
-            </h1>
-            <p className="mt-5 text-sm sm:text-base text-gray-300 leading-relaxed max-w-xl">
-              {t('landing.heroBody')}
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <a href="#portals" className="btn-primary px-6 py-3.5 text-sm font-extrabold">
-                <LogIn size={17} /> Choose Portal &amp; Sign In <ArrowRight size={17} />
-              </a>
-              <Link to="/ai-lab" className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 px-5 py-3 text-sm font-bold text-white transition">
-                <Brain size={17} className="text-bright" /> {t('landing.exploreAi')}
-              </Link>
-            </div>
-            <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-muted">
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-bright" /> 23 Indian Languages + RTL</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-bright" /> Real Satellite Telemetry</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-amber" /> Secure Delivery OTP</span>
+            <div className="text-left">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-2xl sm:text-3xl tracking-tight text-white">Krishi<span className="text-bright">Drive</span></span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber/20 text-amber font-bold border border-amber/30">3.0</span>
+              </div>
+              <p className="text-xs sm:text-sm text-gray-300 font-medium">Smart Farming. Smarter Transport.</p>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-[#111827]/80 backdrop-blur p-5 sm:p-6 shadow-2xl">
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-bright-400">Measured Evidence</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-bright/10 border border-bright/25 px-2.5 py-1 text-[10px] font-bold text-bright"><Cpu size={11} /> CPU Inference</span>
-            </div>
-            <LiveEvidence />
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-white"><AlertTriangle size={14} className="text-amber" /> Verifiable Engineering Standards</div>
-              <p className="text-[11px] text-muted leading-relaxed mt-1.5">
-                ONNX disease classification runs on server CPU. Copernicus soil moisture and weather run on live Open-Meteo endpoints. OSRM calculates real road distances. No fabricated benchmarks or fake live prices.
-              </p>
-              <Link to="/system-status" className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-bold text-bright hover:underline">
-                Inspect Live System Status <ArrowRight size={12} />
-              </Link>
-            </div>
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.15] max-w-3xl">
+            {t('landing.heroTitle')}
+          </h1>
+
+          <p className="mt-4 sm:mt-6 text-sm sm:text-lg text-gray-300 leading-relaxed max-w-2xl">
+            {t('landing.heroBody')}
+          </p>
+
+          {/* Two Big Primary Action Buttons: Log In & Create Account */}
+          <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 w-full max-w-md">
+            <Link
+              to="/login"
+              className="btn-primary w-full sm:w-auto flex-1 min-h-[48px] py-3.5 px-8 font-extrabold text-sm sm:text-base shadow-lg shadow-amber/20 inline-flex items-center justify-center gap-2.5 rounded-xl transition"
+            >
+              <LogIn size={18} />
+              <span>{t('auth.logIn') || 'Log In'}</span>
+            </Link>
+
+            <Link
+              to="/register"
+              className="w-full sm:w-auto flex-1 min-h-[48px] py-3.5 px-8 font-bold text-sm sm:text-base border-2 border-bright text-bright hover:bg-bright/10 active:bg-bright/20 inline-flex items-center justify-center gap-2.5 rounded-xl transition cursor-pointer"
+            >
+              <UserPlus size={18} />
+              <span>{t('auth.createAccount') || 'Create Account'}</span>
+            </Link>
+          </div>
+
+          {/* Secondary Discovery Links */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2 text-xs text-muted">
+            <span className="text-gray-400 font-semibold mr-1">Explore platform:</span>
+            <Link to="/market-prices" className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 hover:text-bright transition border border-white/10">Mandi Prices</Link>
+            <Link to="/satellite-intelligence" className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 hover:text-bright transition border border-white/10">Satellite Mapping</Link>
+            <Link to="/ai-lab" className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 hover:text-bright transition border border-white/10">AI Leaf Lab</Link>
+            <Link to="/on-device-ai" className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 hover:text-bright transition border border-white/10">Model Benchmarks</Link>
+            <Link to="/system-status" className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 hover:text-bright transition border border-white/10">System Status</Link>
+          </div>
+
+          {/* Key Assurance Badges */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-gray-300">
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-bright" /> 23 Indian Languages + RTL</span>
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-bright" /> Real Satellite Telemetry</span>
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={13} className="text-amber" /> Secure Delivery OTP</span>
           </div>
         </div>
       </section>
 
-      {/* THREE USER PORTALS & 1-CLICK LOGIN SECTION */}
-      <section id="portals" className="max-w-7xl mx-auto px-4 py-16">
-        <div className="text-center max-w-3xl mx-auto mb-12">
-          <div className="inline-flex items-center gap-2 rounded-full border border-bright/30 bg-blue-50 dark:bg-midnight-800/80 px-3.5 py-1.5 text-xs font-bold text-electric dark:text-bright mb-3">
-            <KeyRound size={14} className="text-amber" /> Role-Based Access Portals
+      {/* Measured Technical Evidence */}
+      <section className="max-w-7xl mx-auto px-4 -mt-8 sm:-mt-10 relative z-10">
+        <div className="rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-charcoal/90 backdrop-blur p-4 sm:p-6 shadow-xl">
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-electric dark:text-bright-400">Measured Evidence</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-bright/10 border border-bright/25 px-2.5 py-1 text-[10px] font-bold text-electric dark:text-bright"><Cpu size={11} /> CPU Inference</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-            Select Your KrishiDrive Portal
-          </h2>
-          <p className="text-sm text-gray-600 dark:text-muted mt-2">
-            Three independent dashboards tailored for Indian farmers, transport haulers, and platform administrators. Launch instantly with 1-click test accounts or sign in with your credentials.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6">
-          {portals.map((p) => {
-            const Icon = p.icon
-            const isCurrentlyActive = isAuthenticated && user?.role === p.role
-            const isLoggingIn = loggingInRole === p.role
-
-            return (
-              <div
-                key={p.role}
-                className={`rounded-3xl border bg-white dark:bg-[#111827] shadow-lg overflow-hidden flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${
-                  isCurrentlyActive
-                    ? 'border-bright ring-2 ring-bright/20'
-                    : 'border-gray-200 dark:border-[#1E293B]'
-                }`}
-              >
-                <div className="p-6">
-                  {/* Card Header */}
-                  <div className="flex items-center justify-between gap-3 mb-4">
-                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${p.color} text-white flex items-center justify-center shadow-md`}>
-                      <Icon size={24} />
-                    </div>
-                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${p.badge}`}>
-                      {isCurrentlyActive ? 'Active Session' : '1-Click Ready'}
-                    </span>
-                  </div>
-
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                    {p.title}
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-muted mt-0.5">
-                    Demo account: <strong className="text-gray-800 dark:text-gray-200">{p.user}</strong>
-                  </p>
-
-                  <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mt-4">
-                    {p.description}
-                  </p>
-
-                  {/* Highlights List */}
-                  <ul className="mt-5 space-y-2 text-xs text-gray-600 dark:text-gray-300">
-                    {p.highlights.map((h, i) => (
-                      <li key={i} className="flex items-center gap-2">
-                        <CheckCircle2 size={14} className="text-bright shrink-0" />
-                        <span>{h}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Card Action Footer */}
-                <div className="p-6 pt-0 border-t border-gray-100 dark:border-[#1E293B] mt-4">
-                  <button
-                    type="button"
-                    onClick={() => handlePortalLaunch(p.role, p.demoUser)}
-                    disabled={isLoggingIn}
-                    className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm ${
-                      isCurrentlyActive
-                        ? 'btn-secondary'
-                        : 'bg-[#07172F] hover:bg-electric text-white dark:bg-[#1E293B] dark:hover:bg-electric'
-                    }`}
-                  >
-                    {isLoggingIn ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>Opening Portal…</span>
-                      </>
-                    ) : isCurrentlyActive ? (
-                      <>
-                        <span>Enter Your {p.title}</span>
-                        <ChevronRight size={15} />
-                      </>
-                    ) : (
-                      <>
-                        <LogIn size={15} />
-                        <span>Launch as {p.user.split(' ')[0]} (1-Click)</span>
-                      </>
-                    )}
-                  </button>
-
-                  <div className="mt-2 text-center">
-                    <Link
-                      to={`/login?role=${p.role}`}
-                      className="text-[11px] text-gray-500 dark:text-muted hover:text-bright transition"
-                    >
-                      Sign in with custom password &rarr;
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Register Bar */}
-        <div className="mt-10 p-6 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-midnight-800 text-electric dark:text-bright flex items-center justify-center">
-              <UserCheck size={20} />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-900 dark:text-white">Need a new personal account?</p>
-              <p className="text-xs text-gray-500 dark:text-muted">Register in 30 seconds as a Farmer or Transporter with zero registration fee.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              to="/login"
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-[#1E293B] hover:bg-gray-50 dark:hover:bg-[#1E293B] transition"
-            >
-              Custom Sign In
-            </Link>
-            <Link
-              to="/register"
-              className="btn-primary px-4 py-2 text-xs font-bold"
-            >
-              Create Account
+          <LiveEvidence />
+          <div className="mt-4 rounded-2xl border border-gray-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3.5 sm:p-4">
+            <div className="flex items-center gap-2 text-xs font-bold text-gray-900 dark:text-white"><AlertTriangle size={14} className="text-amber" /> Verifiable Engineering Standards</div>
+            <p className="text-[11px] text-gray-600 dark:text-muted leading-relaxed mt-1.5">
+              ONNX disease classification runs on server CPU. Copernicus soil moisture and weather run on live Open-Meteo endpoints. OSRM calculates real road distances. No fabricated benchmarks or fake live prices.
+            </p>
+            <Link to="/system-status" className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-bold text-bright hover:underline">
+              Inspect Live System Status <ArrowRight size={12} />
             </Link>
           </div>
         </div>
       </section>
 
       {/* Core Features Grid */}
-      <section className="max-w-7xl mx-auto px-4 py-14">
-        <div className="text-center max-w-2xl mx-auto mb-10">
+      <section className="max-w-7xl mx-auto px-4 py-12 sm:py-16">
+        <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-bright dark:text-bright-400 mb-2">Platform Capabilities</p>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">Real-world agricultural features.</h2>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {features.map((feature) => (
-            <Link key={feature.title} to={feature.link || '/register'} className="group rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 hover:border-bright hover:shadow-md transition">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-midnight-800 text-electric dark:text-bright grid place-items-center mb-3"><feature.icon size={20} /></div>
-              <h3 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-1.5">{feature.title} <ArrowRight size={13} className="opacity-0 group-hover:opacity-100 transition text-bright" /></h3>
-              <p className="text-xs text-gray-500 dark:text-muted leading-relaxed mt-1.5">{feature.body}</p>
+            <Link key={feature.title} to={feature.link || '/register'} className="group">
+              <Card hover className="p-5 h-full flex flex-col justify-between">
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-midnight-800 text-electric dark:text-bright grid place-items-center mb-3">
+                    <feature.icon size={20} />
+                  </div>
+                  <h3 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-1.5">
+                    {feature.title}
+                    <ArrowRight size={13} className="opacity-0 group-hover:opacity-100 transition text-bright" />
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-muted leading-relaxed mt-1.5">
+                    {feature.body}
+                  </p>
+                </div>
+              </Card>
             </Link>
           ))}
         </div>
       </section>
 
       {/* How it works workflow */}
-      <section className="bg-white dark:bg-[#07172F] border-y border-gray-200 dark:border-[#1E293B]">
-        <div className="max-w-7xl mx-auto px-4 py-14 grid lg:grid-cols-3 gap-10">
+      <section className="bg-white dark:bg-midnight border-y border-gray-200 dark:border-charcoal-800">
+        <div className="max-w-7xl mx-auto px-4 py-12 sm:py-14 grid lg:grid-cols-3 gap-8 lg:gap-10">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-bright dark:text-bright-400 mb-2">How it works</p>
-            <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white">One workflow from field to mandi.</h2>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-white">One workflow from field to mandi.</h2>
             <p className="text-xs text-gray-500 dark:text-muted leading-relaxed mt-2">Each step uses a real record or a clearly labelled estimate. Nothing is dressed up as AI when it is a rule.</p>
           </div>
           <div className="lg:col-span-2 grid sm:grid-cols-2 gap-4">
@@ -337,42 +194,49 @@ export default function LandingPage() {
               { icon: RouteIcon, title: 'Compare mandis & routes', body: 'OSRM routing calculates net realization taking into account road transport costs.' },
               { icon: Truck, title: 'Book, track and hand over', body: 'Match haulers, follow live transit, and complete handover with 4-digit Delivery OTP.' }
             ].map((step, index) => (
-              <div key={step.title} className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-slate-50/50 dark:bg-[#111827] p-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-electric dark:text-bright"><span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-midnight-800 grid place-items-center text-electric dark:text-bright">{index + 1}</span> STEP</div>
+              <Card key={step.title} className="p-4 bg-slate-50/60 dark:bg-charcoal">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-electric dark:text-bright">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-midnight-800 grid place-items-center text-electric dark:text-bright">{index + 1}</span>
+                  STEP
+                </div>
                 <step.icon size={20} className="text-bright my-2" />
                 <p className="text-sm font-bold text-gray-900 dark:text-white">{step.title}</p>
                 <p className="text-[11px] text-gray-500 dark:text-muted mt-1">{step.body}</p>
-              </div>
+              </Card>
             ))}
           </div>
         </div>
       </section>
 
       {/* Honest AI commitment */}
-      <section className="max-w-7xl mx-auto px-4 py-14 grid lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-bright/30 dark:border-bright/20 bg-blue-50/50 dark:bg-[#111827] p-6">
-          <div className="flex items-center gap-2 text-sm font-extrabold text-electric dark:text-bright"><ShieldCheck size={18} className="text-amber" /> {t('landing.honestTitle')}</div>
+      <section className="max-w-7xl mx-auto px-4 py-12 sm:py-14 grid lg:grid-cols-2 gap-6">
+        <Card className="border-bright/30 dark:border-bright/20 bg-blue-50/50 dark:bg-charcoal p-5 sm:p-6">
+          <div className="flex items-center gap-2 text-sm font-extrabold text-electric dark:text-bright">
+            <ShieldCheck size={18} className="text-amber" /> {t('landing.honestTitle')}
+          </div>
           <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed mt-2">{t('landing.honestBody')}</p>
           <ul className="mt-3 space-y-1.5 text-[11px] text-gray-600 dark:text-muted">
             <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-bright" /> Real ONNX Runtime inference on verified PlantVillage dataset.</li>
             <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-bright" /> Live weather from Open-Meteo & road distance from OSRM.</li>
             <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-bright" /> Full ACID SQLite persistence with concurrency locks.</li>
           </ul>
-        </div>
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-6 flex flex-col justify-between">
+        </Card>
+        <Card className="p-5 sm:p-6 flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-2 text-sm font-extrabold text-gray-900 dark:text-white"><Cpu size={18} className="text-bright" /> System Integration Status</div>
+            <div className="flex items-center gap-2 text-sm font-extrabold text-gray-900 dark:text-white">
+              <Cpu size={18} className="text-bright" /> System Integration Status
+            </div>
             <p className="text-xs text-gray-500 dark:text-muted leading-relaxed mt-2">
               All backend external integrations (Open-Meteo, OSRM, Agmarknet, SQLite WAL, ONNX model) are actively probed in real-time with measured latencies.
             </p>
           </div>
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#1E293B] flex items-center justify-between">
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-charcoal-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <span className="text-xs font-semibold text-electric dark:text-bright">Probe Latencies: Weather ~1s · Route ~0.9s · ONNX ~3.3ms</span>
-            <Link to="/system-status" className="btn-secondary px-3.5 py-1.5 text-xs font-bold">
+            <Link to="/system-status" className="btn-secondary text-xs">
               View Probe &rarr;
             </Link>
           </div>
-        </div>
+        </Card>
       </section>
     </div>
   )

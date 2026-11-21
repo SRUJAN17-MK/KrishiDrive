@@ -92,20 +92,11 @@ function ScrollToTop() {
 }
 
 function Sidebar({ items, subtitle }) {
-  const { user, logout, quickLogin } = useAuth()
+  const { user, logout } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const { t } = useLanguage()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
-
-  const handleRoleSwitch = async (username, path) => {
-    try {
-      await quickLogin(username, 'demo123')
-      navigate(path)
-    } catch {
-      navigate('/login')
-    }
-  }
 
   return (
     <>
@@ -198,39 +189,6 @@ function Sidebar({ items, subtitle }) {
               <LogOut size={16} />
             </button>
           </div>
-
-          <div className="flex items-center justify-between text-[11px] px-1 text-gray-500 dark:text-muted">
-            <span>Switch Role:</span>
-            <div className="flex items-center gap-2">
-              {user?.role !== 'farmer' && (
-                <button
-                  type="button"
-                  onClick={() => handleRoleSwitch('farmer1', '/farmer')}
-                  className="font-bold text-bright hover:underline"
-                >
-                  Farmer
-                </button>
-              )}
-              {user?.role !== 'driver' && (
-                <button
-                  type="button"
-                  onClick={() => handleRoleSwitch('driver1', '/driver')}
-                  className="font-bold text-amber hover:underline"
-                >
-                  Driver
-                </button>
-              )}
-              {user?.role !== 'admin' && (
-                <button
-                  type="button"
-                  onClick={() => handleRoleSwitch('admin', '/admin')}
-                  className="font-bold text-electric hover:underline"
-                >
-                  Admin
-                </button>
-              )}
-            </div>
-          </div>
         </div>
 
         <div className="p-3 border-t border-gray-100 dark:border-[#1E293B]">
@@ -289,7 +247,7 @@ function PublicLayout({ children }) {
           </nav>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="hidden sm:block"><LanguageSwitcher compact /></div>
+            <div><LanguageSwitcher compact /></div>
             <button
               onClick={toggleTheme}
               className="p-2 rounded-lg text-gray-500 hover:text-gray-800 dark:text-muted dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#111827] transition"

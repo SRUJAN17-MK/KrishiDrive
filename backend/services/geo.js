@@ -260,4 +260,38 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-module.exports = { CITY_COORDS, resolveLocal, parseDirectCoordinates, geocode, haversineDistance };
+/**
+ * Calculates a bounding box (minLat, maxLat, minLng, maxLng) for SQL pre-filtering.
+ */
+function getBoundingBox(lat, lng, radiusKm) {
+  const R = 6371; // Earth radius in km
+  const radLat = (lat * Math.PI) / 180;
+  const dLat = (radiusKm / R) * (180 / Math.PI);
+  // Guard against division by 0 near poles
+  const cosLat = Math.max(Math.cos(radLat), 0.0001);
+  const dLng = (radiusKm / (R * cosLat)) * (180 / Math.PI);
+  return {
+    minLat: Math.max(-90, lat - dLat),
+    maxLat: Math.min(90, lat + dLat),
+    minLng: Math.max(-180, lng - Math.abs(dLng)),
+    maxLng: Math.min(180, lng + Math.abs(dLng))
+  };
+}
+
+/**
+ * Rounds coordinate to 2 decimal places (~1.1 km precision) to protect personal privacy.
+ */
+function roundCoordinate(val) {
+  const n = Number(val);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+module.exports = {
+  CITY_COORDS,
+  resolveLocal,
+  parseDirectCoordinates,
+  geocode,
+  haversineDistance,
+  getBoundingBox,
+  roundCoordinate
+};

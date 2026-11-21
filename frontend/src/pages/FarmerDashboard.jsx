@@ -8,7 +8,7 @@ import { api } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
 import OfflineBanner from '../components/OfflineBanner'
-import { PageHeader, StatCard, LoadingBlock, EmptyState, StatusBadge } from '../components/ui'
+import { PageHeader, StatCard, LoadingBlock, EmptyState, StatusBadge, Card, Button, Input } from '../components/ui'
 import { formatINR } from '../utils/currency'
 import toast from 'react-hot-toast'
 
@@ -94,10 +94,14 @@ export default function FarmerDashboard() {
         title={t('farmer.overview')}
         subtitle={`${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} · ${location}`}
         actions={
-          <>
-            <button onClick={() => setShowProfile(true)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:border-bright transition"><User size={15} className="text-bright" /> {t('common.profile')}</button>
-            <Link to="/farmer/crops" className="btn-primary px-3 py-2 text-xs font-bold"><Plus size={15} /> {t('farmer.addCrop')}</Link>
-          </>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowProfile(true)} icon={User}>
+              {t('common.profile')}
+            </Button>
+            <Link to="/farmer/crops" className="btn-primary text-xs font-bold py-2 px-3 min-h-[36px]">
+              <Plus size={15} /> {t('farmer.addCrop')}
+            </Link>
+          </div>
         }
       />
 
@@ -109,7 +113,7 @@ export default function FarmerDashboard() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
-        <section className="lg:col-span-2 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm" aria-live="polite">
+        <Card className="lg:col-span-2 p-5" aria-live="polite">
           <div className="flex items-center justify-between gap-2 mb-3">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2"><WeatherIcon size={17} className="text-amber" /> {t('farmer.weather')}</h2>
             {weather?.source && <span className="text-[10px] font-semibold text-bright dark:text-bright-400 bg-blue-50 dark:bg-electric/20 px-2.5 py-0.5 rounded-full border border-bright/20">{weather.source} {weather.cached ? '· cached' : '· live'}</span>}
@@ -137,7 +141,7 @@ export default function FarmerDashboard() {
               </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {(weather.forecast || []).slice(0, 4).map((day) => (
-                  <div key={day.date} className="rounded-xl bg-gray-50 dark:bg-[#07172F] p-2.5 text-center border border-gray-100 dark:border-[#1E293B]">
+                  <div key={day.date} className="rounded-xl bg-gray-50 dark:bg-midnight p-2.5 text-center border border-gray-100 dark:border-charcoal-800">
                     <p className="text-[10px] font-semibold text-gray-500 dark:text-muted">{new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</p>
                     <p className="text-xs font-bold mt-1 text-gray-900 dark:text-white">{Math.round(day.temp_max_c)}° / {Math.round(day.temp_min_c)}°</p>
                     <p className="text-[9px] text-gray-400 dark:text-muted truncate">{day.condition?.text}</p>
@@ -147,9 +151,9 @@ export default function FarmerDashboard() {
               <p className="text-[10px] text-gray-400 dark:text-muted mt-3">Fetched {weather.fetched_at ? new Date(weather.fetched_at).toLocaleString() : 'just now'} · Open-Meteo forecast. Not a field sensor reading.</p>
             </>
           ) : null}
-        </section>
+        </Card>
 
-        <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+        <Card className="p-5">
           <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Sparkles size={16} className="text-amber" /> {t('farmer.quickActions')}</h2>
           <div className="space-y-2">
             {[
@@ -159,16 +163,16 @@ export default function FarmerDashboard() {
               { to: '/ai-lab', icon: Brain, label: t('farmer.diseaseDetect') },
               { to: '/farmer/assistant', icon: Sparkles, label: t('farmer.askAssistant') }
             ].map((action) => (
-              <Link key={action.to} to={action.to} className="flex items-center gap-3 rounded-xl border border-gray-100 dark:border-[#1E293B] px-3 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-[#1E293B] hover:border-bright/40 transition">
+              <Link key={action.to} to={action.to} className="flex items-center gap-3 rounded-xl border border-gray-100 dark:border-charcoal-800 px-3 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-charcoal-800 hover:border-bright/40 transition">
                 <action.icon size={16} className="text-bright" /> {action.label} <ArrowRight size={13} className="ml-auto text-gray-400" />
               </Link>
             ))}
           </div>
-        </section>
+        </Card>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5">
-        <section className="lg:col-span-2 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+        <Card className="lg:col-span-2 p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('farmer.recentCrops')}</h2>
             <Link to="/farmer/crops" className="text-[11px] font-bold text-bright hover:underline">{t('common.viewAll')}</Link>
@@ -176,7 +180,7 @@ export default function FarmerDashboard() {
           {crops.length === 0 ? (
             <EmptyState title={t('farmer.noCrops')} action={<Link to="/farmer/crops" className="btn-primary px-3 py-2 text-xs font-bold"><Plus size={14} /> {t('farmer.addCrop')}</Link>} />
           ) : (
-            <div className="divide-y divide-gray-100 dark:divide-[#1E293B]">
+            <div className="divide-y divide-gray-100 dark:divide-charcoal-800">
               {crops.slice(0, 5).map((crop) => (
                 <div key={crop.id} className="py-2.5 flex items-center gap-3">
                   <span className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-midnight-800 grid place-items-center"><Sprout size={15} className="text-bright" /></span>
@@ -192,10 +196,10 @@ export default function FarmerDashboard() {
               ))}
             </div>
           )}
-        </section>
+        </Card>
 
         <div className="space-y-5">
-          <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+          <Card className="p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('farmer.recentRequests')}</h2>
               <Link to="/farmer/transport" className="text-[11px] font-bold text-bright hover:underline">{t('common.viewAll')}</Link>
@@ -203,7 +207,7 @@ export default function FarmerDashboard() {
             {requests.length === 0 ? <p className="text-xs text-gray-500 dark:text-muted">{t('farmer.noRequests')}</p> : (
               <div className="space-y-2">
                 {requests.slice(0, 3).map((request) => (
-                  <div key={request.id} className="rounded-xl bg-gray-50 dark:bg-[#07172F] p-2.5 border border-gray-100 dark:border-[#1E293B]">
+                  <div key={request.id} className="rounded-xl bg-gray-50 dark:bg-midnight p-2.5 border border-gray-100 dark:border-charcoal-800">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{request.crop} · {Number(request.quantity).toLocaleString()} kg</p>
                       <StatusBadge status={request.status} />
@@ -217,40 +221,42 @@ export default function FarmerDashboard() {
                 ))}
               </div>
             )}
-          </section>
+          </Card>
 
-          <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+          <Card className="p-5">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Bell size={15} className="text-amber" /> {t('farmer.notifications')}</h2>
             {notifications.length === 0 ? <p className="text-xs text-gray-500 dark:text-muted">No actionable notifications.</p> : (
               <div className="space-y-2">
                 {notifications.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-gray-100 dark:border-[#1E293B] bg-gray-50/50 dark:bg-[#07172F] p-2.5">
+                  <div key={item.id} className="rounded-xl border border-gray-100 dark:border-charcoal-800 bg-gray-50/50 dark:bg-midnight p-2.5">
                     <p className="text-[11px] font-bold text-gray-800 dark:text-gray-100">{item.title}</p>
                     <p className="text-[10px] text-gray-500 dark:text-muted mt-0.5">{item.message}</p>
                   </div>
                 ))}
               </div>
             )}
-          </section>
+          </Card>
         </div>
       </div>
 
       {showProfile && (
-        <div className="fixed inset-0 z-[80] bg-[#07172F]/70 backdrop-blur-sm grid place-items-center p-4" role="dialog" aria-modal="true" aria-label={t('common.profile')}>
-          <form onSubmit={saveProfile} className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111827] border border-gray-200 dark:border-[#1E293B] p-5 shadow-2xl">
+        <div className="fixed inset-0 z-[80] bg-midnight/70 backdrop-blur-sm grid place-items-center p-4" role="dialog" aria-modal="true" aria-label={t('common.profile')}>
+          <form onSubmit={saveProfile} className="w-full max-w-md rounded-2xl bg-white dark:bg-charcoal border border-gray-200 dark:border-charcoal-800 p-5 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('common.profile')}</h2>
-              <button type="button" onClick={() => setShowProfile(false)} aria-label={t('common.close')} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1E293B]"><X size={17} /></button>
+              <button type="button" onClick={() => setShowProfile(false)} aria-label={t('common.close')} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-charcoal-800"><X size={17} /></button>
             </div>
             <div className="space-y-3">
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.fullName')}<input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.phone')}<input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
+              <Input label={t('auth.fullName')} value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} />
+              <Input label={t('auth.phone')} value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
               <div className="grid grid-cols-2 gap-2">
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.village')}<input value={profile.village} onChange={(e) => setProfile({ ...profile, village: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{t('auth.state')}<input value={profile.state} onChange={(e) => setProfile({ ...profile, state: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-2 focus:ring-bright outline-none" /></label>
+                <Input label={t('auth.village')} value={profile.village} onChange={(e) => setProfile({ ...profile, village: e.target.value })} />
+                <Input label={t('auth.state')} value={profile.state} onChange={(e) => setProfile({ ...profile, state: e.target.value })} />
               </div>
             </div>
-            <button type="submit" disabled={saving} className="btn-primary mt-4 w-full py-2.5 text-xs font-bold">{saving ? t('common.loading') : t('common.save')}</button>
+            <Button type="submit" loading={saving} className="mt-4 w-full" variant="primary">
+              {t('common.save')}
+            </Button>
           </form>
         </div>
       )}

@@ -10,6 +10,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const geo = require('./services/geo');
 
 const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
@@ -356,6 +357,56 @@ function initSchema() {
 
     db.prepare('INSERT INTO schema_migrations (version) VALUES (4)').run();
   }
+
+  // Migration v5: KrishiDrive Nearby Drivers & Open Farmer Dispatches
+  const v5 = db.prepare('SELECT 1 FROM schema_migrations WHERE version = 5').get();
+  if (!v5) {
+    try { db.prepare("ALTER TABLE vehicles ADD COLUMN last_lat REAL DEFAULT NULL").run(); } catch {}
+    try { db.prepare("ALTER TABLE vehicles ADD COLUMN last_lng REAL DEFAULT NULL").run(); } catch {}
+    try { db.prepare("ALTER TABLE vehicles ADD COLUMN last_location_at TEXT DEFAULT NULL").run(); } catch {}
+    try { db.prepare("ALTER TABLE vehicles ADD COLUMN availability_status TEXT NOT NULL DEFAULT 'offline' CHECK(availability_status IN ('available','busy','offline'))").run(); } catch {}
+
+    try { db.prepare("ALTER TABLE users ADD COLUMN last_lat REAL DEFAULT NULL").run(); } catch {}
+    try { db.prepare("ALTER TABLE users ADD COLUMN last_lng REAL DEFAULT NULL").run(); } catch {}
+    try { db.prepare("ALTER TABLE users ADD COLUMN last_location_at TEXT DEFAULT NULL").run(); } catch {}
+    try { db.prepare("ALTER TABLE users ADD COLUMN availability_status TEXT NOT NULL DEFAULT 'offline' CHECK(availability_status IN ('available','busy','offline'))").run(); } catch {}
+
+    try { db.prepare("ALTER TABLE transport_requests ADD COLUMN pickup_lat REAL DEFAULT NULL").run(); } catch {}
+    try { db.prepare("ALTER TABLE transport_requests ADD COLUMN pickup_lng REAL DEFAULT NULL").run(); } catch {}
+
+    try { db.prepare("CREATE INDEX IF NOT EXISTS idx_vehicles_avail ON vehicles(availability_status)").run(); } catch {}
+    try { db.prepare("CREATE INDEX IF NOT EXISTS idx_users_avail ON users(availability_status)").run(); } catch {}
+    try { db.prepare("CREATE INDEX IF NOT EXISTS idx_tr_pickup_coords ON transport_requests(pickup_lat, pickup_lng)").run(); } catch {}
+
+    // Backfill existing transport requests coordinates from pickup string
+    try {
+      const rows = db.prepare("SELECT id, pickup FROM transport_requests WHERE pickup_lat IS NULL AND pickup != ''").all();
+      const updateStmt = db.prepare("UPDATE transport_requests SET pickup_lat = ?, pickup_lng = ? WHERE id = ?");
+      for (const row of rows) {
+        const coords = geo.resolveLocal(row.pickup);
+        if (coords && coords.lat && coords.lng) {
+          updateStmt.run(coords.lat, coords.lng, row.id);
+        }
+      }
+    } catch {}
+
+    // Seed realistic last_lat/last_lng for seeded driver1 so there is a verified driver near Nashik available
+    try {
+      const now = new Date().toISOString();
+      db.prepare(`
+        UPDATE vehicles
+        SET last_lat = 19.9975, last_lng = 73.7898, last_location_at = ?, availability_status = 'available'
+        WHERE driver = 'driver1'
+      `).run(now);
+      db.prepare(`
+        UPDATE users
+        SET last_lat = 19.9975, last_lng = 73.7898, last_location_at = ?, availability_status = 'available'
+        WHERE username = 'driver1'
+      `).run(now);
+    } catch {}
+
+    db.prepare('INSERT INTO schema_migrations (version) VALUES (5)').run();
+  }
 }
 
 /** Atomic per-table ID generation (call inside a transaction). */
@@ -414,7 +465,8 @@ const userOps = {
   },
   update(username, fields) {
     const allowed = ['full_name', 'phone', 'village', 'state', 'farm_size', 'avatar',
-      'verified', 'rating', 'trips_completed', 'license_number', 'address', 'status', 'is_active'];
+      'verified', 'rating', 'trips_completed', 'license_number', 'address', 'status', 'is_active',
+      'last_lat', 'last_lng', 'last_location_at', 'availability_status'];
     const updates = [];
     const values = {};
     for (const [k, v] of Object.entries(fields)) {
@@ -705,6 +757,28 @@ const vehicleOps = {
   setStatus(id, status) {
     getDb().prepare('UPDATE vehicles SET status = ? WHERE id = ?').run(status, id);
   },
+  updateAvailability(driver, fields) {
+    const updates = [];
+    const values = { driver };
+    if (fields.availability_status !== undefined) {
+      updates.push('availability_status = @availability_status');
+      values.availability_status = fields.availability_status;
+    }
+    if (fields.last_lat !== undefined) {
+      updates.push('last_lat = @last_lat');
+      values.last_lat = fields.last_lat;
+    }
+    if (fields.last_lng !== undefined) {
+      updates.push('last_lng = @last_lng');
+      values.last_lng = fields.last_lng;
+    }
+    if (fields.last_location_at !== undefined) {
+      updates.push('last_location_at = @last_location_at');
+      values.last_location_at = fields.last_location_at;
+    }
+    if (!updates.length) return;
+    getDb().prepare(`UPDATE vehicles SET ${updates.join(', ')} WHERE driver = @driver`).run(values);
+  },
   create(vehicle) {
     const id = vehicle.id || getNextId('vehicles', 'V');
     getDb().prepare(`
@@ -762,9 +836,9 @@ const transportOps = {
       const id = getNextId('transport_requests', 'TR');
       getDb().prepare(`
         INSERT INTO transport_requests (id, farmer, farmer_name, farmer_phone, crop, quantity, unit,
-          pickup, destination, vehicle_type, pickup_date, preferred_time, estimated_cost, status, created_at)
+          pickup, destination, vehicle_type, pickup_date, preferred_time, estimated_cost, status, pickup_lat, pickup_lng, created_at)
         VALUES (@id, @farmer, @farmer_name, @farmer_phone, @crop, @quantity, @unit,
-          @pickup, @destination, @vehicle_type, @pickup_date, @preferred_time, @estimated_cost, 'pending', @created_at)
+          @pickup, @destination, @vehicle_type, @pickup_date, @preferred_time, @estimated_cost, 'pending', @pickup_lat, @pickup_lng, @created_at)
       `).run({
         id,
         farmer: req.farmer,
@@ -779,6 +853,8 @@ const transportOps = {
         pickup_date: req.pickup_date || '',
         preferred_time: req.preferred_time || '07:00 AM',
         estimated_cost: req.estimated_cost || 0,
+        pickup_lat: req.pickup_lat !== undefined ? req.pickup_lat : null,
+        pickup_lng: req.pickup_lng !== undefined ? req.pickup_lng : null,
         created_at: new Date().toISOString().split('T')[0]
       });
       return this.findById(id);

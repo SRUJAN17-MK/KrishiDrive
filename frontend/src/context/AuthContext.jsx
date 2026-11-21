@@ -57,12 +57,6 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('kd_user')
   }, [])
 
-  const quickLogin = useCallback(async (username, password = 'demo123') => {
-    const data = await api.auth.login({ username, password })
-    login(data.user, data.access_token)
-    return data.user
-  }, [login])
-
   return (
     <AuthContext.Provider
       value={{
@@ -71,7 +65,6 @@ export function AuthProvider({ children }) {
         loading,
         login,
         logout,
-        quickLogin,
         isAuthenticated: !!token,
         isFarmer: user?.role === 'farmer',
         isDriver: user?.role === 'driver',

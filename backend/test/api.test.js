@@ -1219,3 +1219,184 @@ test('unknown API routes return JSON 404', async () => {
   assert.equal(res.status, 404);
   assert.equal(res.data.detail, 'API route not found');
 });
+
+// ─── NEARBY FEATURE TESTS ────────────────────────────────────────────────────
+test('Nearby feature - driver availability and radius search', async (t) => {
+  // Use seeded accounts — all use password 'demo123'; admin username is 'admin'
+  const farmer = await tokenFor('farmer1');
+  const driver = await tokenFor('driver1');
+  const admin = await tokenFor('admin');
+  await t.test('driver can set availability to available with valid coords', async () => {
+    const res = await request('PUT', '/api/driver/availability', {
+      token: driver,
+      body: { status: 'available', latitude: 19.9975, longitude: 73.7898 }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.status, 'available');
+    assert.ok(res.data.last_location_at, 'should return last_location_at');
+    assert.ok(res.data.latitude_approx !== undefined, 'should return latitude_approx');
+    assert.ok(res.data.longitude_approx !== undefined, 'should return longitude_approx');
+  });
+
+  await t.test('driver can set availability to offline', async () => {
+    const res = await request('PUT', '/api/driver/availability', {
+      token: driver,
+      body: { status: 'offline' }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.status, 'offline');
+  });
+
+  await t.test('invalid availability status returns 400', async () => {
+    const res = await request('PUT', '/api/driver/availability', {
+      token: driver,
+      body: { status: 'unknown_status' }
+    });
+    assert.equal(res.status, 400);
+  });
+
+  await t.test('latitude out of range returns 400', async () => {
+    const res = await request('PUT', '/api/driver/availability', {
+      token: driver,
+      body: { status: 'available', latitude: 999, longitude: 73.0 }
+    });
+    assert.equal(res.status, 400);
+  });
+
+  await t.test('longitude out of range returns 400', async () => {
+    const res = await request('PUT', '/api/driver/availability', {
+      token: driver,
+      body: { status: 'available', latitude: 20.0, longitude: 999 }
+    });
+    assert.equal(res.status, 400);
+  });
+
+  await t.test('farmer cannot call PUT /api/driver/availability', async () => {
+    const res = await request('PUT', '/api/driver/availability', {
+      token: farmer,
+      body: { status: 'available', latitude: 20.0, longitude: 73.0 }
+    });
+    assert.equal(res.status, 403);
+  });
+
+  await t.test('admin cannot call PUT /api/driver/availability', async () => {
+    const res = await request('PUT', '/api/driver/availability', {
+      token: admin,
+      body: { status: 'available', latitude: 20.0, longitude: 73.0 }
+    });
+    assert.equal(res.status, 403);
+  });
+
+  // Set driver1 as available at Nashik for the following tests
+  await request('PUT', '/api/driver/availability', {
+    token: driver,
+    body: { status: 'available', latitude: 19.9975, longitude: 73.7898 }
+  });
+
+  await t.test('farmer GET /api/nearby returns nearby available drivers within 150km', async () => {
+    const res = await request('GET', '/api/nearby', { token: farmer });
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.data.results), 'results should be array');
+    assert.ok(res.data.radius_km <= 150, 'radius should be <=150');
+    // driver1 is at Nashik, farmer1's farm should also be in Maharashtra region
+    // Verify no phone numbers are exposed
+    for (const r of res.data.results) {
+      assert.ok(!('phone' in r), 'phone must not be returned in nearby results');
+      assert.equal(r.type, 'driver');
+      assert.ok(typeof r.distance_km === 'number');
+      assert.ok(typeof r.approx_lat === 'number');
+      assert.ok(typeof r.approx_lng === 'number');
+    }
+  });
+
+  await t.test('radius_km clamped to 150 when given larger value', async () => {
+    const res = await request('GET', '/api/nearby?radius_km=500', { token: farmer });
+    assert.equal(res.status, 200);
+    assert.ok(res.data.radius_km <= 150, 'radius should be clamped to 150');
+  });
+
+  await t.test('driver GET /api/nearby returns open farmer transport requests', async () => {
+    // First create a pending transport request near Nashik so driver can find it
+    const trRes = await request('POST', '/api/transport/request', {
+      token: farmer,
+      body: {
+        crop: 'Onion',
+        quantity: 500,
+        unit: 'kg',
+        pickup: 'Nashik',
+        destination: 'Vashi APMC, Mumbai',
+        vehicle_type: 'Truck (10-Ton)',
+        pickup_date: '2027-01-15',
+        preferred_time: '07:00 AM'
+      }
+    });
+    assert.equal(trRes.status, 200, `transport request creation failed: ${JSON.stringify(trRes.data)}`);
+
+    const res = await request('GET', '/api/nearby', { token: driver });
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.data.results), 'results should be array');
+    for (const r of res.data.results) {
+      assert.ok(!('farmer' in r), 'farmer username must not be returned in nearby results');
+      assert.ok(!('phone' in r), 'phone must not be returned in nearby results');
+      assert.equal(r.type, 'request');
+      assert.ok(typeof r.distance_km === 'number');
+    }
+  });
+
+  await t.test('offline driver is excluded from farmer nearby search', async () => {
+    // Set driver1 offline
+    await request('PUT', '/api/driver/availability', {
+      token: driver,
+      body: { status: 'offline' }
+    });
+    const res = await request('GET', '/api/nearby', { token: farmer });
+    assert.equal(res.status, 200);
+    const driver1Results = res.data.results.filter(r => r.driver_username === 'driver1');
+    assert.equal(driver1Results.length, 0, 'offline driver1 should not appear in nearby results');
+
+    // Restore driver1 to available
+    await request('PUT', '/api/driver/availability', {
+      token: driver,
+      body: { status: 'available', latitude: 19.9975, longitude: 73.7898 }
+    });
+  });
+
+  await t.test('driver with no last_lat returns empty results with message', async () => {
+    // Register a fresh driver with no location set
+    const ts = Date.now();
+    const newDriverName = `driver_noloc_${ts}`;
+    const regRes = await request('POST', '/api/auth/register-driver', {
+      body: {
+        username: newDriverName,
+        full_name: 'No Location Driver',
+        phone: `98${String(ts).slice(-8)}`,
+        email: `${newDriverName}@test.in`,
+        password: 'password123',
+        address: 'Nashik',
+        vehicle_reg_number: `MH-99-NL-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_type: 'Truck (10-Ton)',
+        vehicle_capacity: 5000,
+        driving_licence_number: `DL-NL-${ts}`,
+        permit_type: 'state',
+        issuing_state: 'Maharashtra',
+        permit_number: `NL-${ts}`,
+        issuing_authority: 'RTO',
+        issue_date: '2026-01-01',
+        expiry_date: '2029-01-01'
+      }
+    });
+    assert.ok([200, 201].includes(regRes.status), `driver registration failed: ${JSON.stringify(regRes.data)}`);
+    const newDriverToken = regRes.data.access_token;
+
+    const res = await request('GET', '/api/nearby', { token: newDriverToken });
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.data.results));
+    assert.equal(res.data.results.length, 0, 'driver with no location should get empty results');
+    assert.ok(res.data.message, 'should include a helpful message');
+  });
+
+  await t.test('unauthenticated request to /api/nearby returns 401', async () => {
+    const res = await request('GET', '/api/nearby');
+    assert.equal(res.status, 401);
+  });
+});

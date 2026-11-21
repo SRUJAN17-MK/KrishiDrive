@@ -6,7 +6,7 @@ import {
   Satellite, Pencil, Trash2
 } from 'lucide-react'
 import { api } from '../services/api'
-import { PageHeader, LoadingBlock, StatCard } from '../components/ui'
+import { PageHeader, LoadingBlock, StatCard, Card, Button, Badge } from '../components/ui'
 import { formatINR } from '../utils/currency'
 import toast from 'react-hot-toast'
 
@@ -377,7 +377,11 @@ export default function AdminDashboard() {
         eyebrow="Administration"
         title="Platform analytics & governance"
         subtitle="Counts come from the SQLite database. Revenue is the sum of completed trip earnings, not a projected or fabricated figure."
-        actions={<button onClick={load} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200 hover:border-bright transition"><RefreshCw size={14} className="text-bright" /> Refresh</button>}
+        actions={
+          <Button variant="outline" size="sm" onClick={load} icon={RefreshCw}>
+            Refresh
+          </Button>
+        }
       />
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 mb-4">{error}</div>}
@@ -390,25 +394,25 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+        <Card className="p-4">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-900 dark:text-white"><Database size={15} className="text-bright" /> Database</div>
           <p className="text-[11px] text-gray-500 dark:text-muted mt-1">{stats?.platform_health?.database || 'SQLite'}</p>
-        </div>
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-900 dark:text-white"><Cpu size={15} className="text-bright" /> Disease model</div>
           <p className="text-[11px] text-gray-500 dark:text-muted mt-1">
             {model?.model?.available ? `${model.model.architecture} · ${model.runtime?.execution_provider || 'cpu'}` : 'Not loaded'}
             {model?.benchmark?.latency_ms?.inference?.avg ? ` · ${model.benchmark.latency_ms.inference.avg} ms avg (CPU)` : ''}
           </p>
-        </div>
-        <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-900 dark:text-white"><Store size={15} className="text-amber" /> External services</div>
           <p className="text-[11px] text-gray-500 dark:text-muted mt-1 flex items-center gap-1"><CloudSun size={11} className="text-amber" /> Open-Meteo weather · OSRM routes</p>
           <p className="text-[11px] text-gray-500 dark:text-muted mt-1 flex items-center gap-1"><Store size={11} className="text-bright" /> Mandi: {stats?.platform_health?.market_prices || 'not configured'}</p>
-        </div>
+        </Card>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-[#1E293B] pb-3 mb-4">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-charcoal-800 pb-3 mb-4">
         {[
           { id: 'users', label: 'User directory', count: users.length },
           { id: 'verification', label: 'Driver verification', count: drivers.length },
@@ -416,14 +420,14 @@ export default function AdminDashboard() {
           { id: 'audit', label: 'Audit trail', count: auditLogs.length },
           { id: 'support', label: 'Support desk', count: ticketCounts.open + ticketCounts.in_progress }
         ].map((item) => (
-          <button key={item.id} onClick={() => setTab(item.id)} className={`rounded-xl px-3 py-2 text-xs font-bold inline-flex items-center gap-2 transition ${tab === item.id ? 'bg-electric text-white shadow-xs' : 'bg-white dark:bg-[#111827] border border-gray-200 dark:border-[#1E293B] text-gray-600 dark:text-muted hover:border-bright/50'}`}>
-            {item.label} <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === item.id ? 'bg-midnight text-white' : 'bg-gray-100 dark:bg-[#07172F]'}`}>{item.count}</span>
+          <button key={item.id} onClick={() => setTab(item.id)} className={`rounded-xl px-3 py-2 text-xs font-bold inline-flex items-center gap-2 transition ${tab === item.id ? 'bg-electric text-white shadow-xs' : 'bg-white dark:bg-charcoal border border-gray-200 dark:border-charcoal-800 text-gray-600 dark:text-muted hover:border-bright/50'}`}>
+            {item.label} <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${tab === item.id ? 'bg-midnight text-white' : 'bg-gray-100 dark:bg-midnight'}`}>{item.count}</span>
           </button>
         ))}
       </div>
 
       {tab === 'users' && (
-        <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+        <Card className="p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
             <div className="relative flex-1 max-w-sm">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -452,21 +456,23 @@ export default function AdminDashboard() {
             </table>
             {filteredUsers.length === 0 && <p className="text-center text-xs text-gray-500 dark:text-muted py-6">No users match this filter.</p>}
           </div>
-        </section>
+        </Card>
       )}
 
       {tab === 'verification' && (
-        <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+        <Card className="p-4">
           <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-1">Driver verification</h2>
           <p className="text-[11px] text-gray-500 dark:text-muted mb-4">This toggles the verified flag on the account. Complete server-side verification and permit audits are recorded.</p>
           <div className="grid md:grid-cols-2 gap-3">
             {drivers.map((driver) => {
               const vehicle = vehicleByDriver.get(driver.username)
               return (
-                <div key={driver.username} className="rounded-xl border border-gray-100 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] p-3">
+                <div key={driver.username} className="rounded-xl border border-gray-100 dark:border-charcoal-800 bg-gray-50 dark:bg-midnight p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2"><Avatar user={driver} /><div><p className="text-xs font-bold text-gray-900 dark:text-white">{driver.full_name}</p><p className="text-[10px] text-gray-400 dark:text-muted">@{driver.username} · {driver.phone || 'no phone'}</p></div></div>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold border ${driver.verified ? 'bg-blue-50 text-electric border-bright/30 dark:bg-electric/25 dark:text-bright' : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300'}`}>{driver.verified ? 'Verified' : 'Pending'}</span>
+                    <Badge variant={driver.verified ? 'primary' : 'amber'}>
+                      {driver.verified ? 'Verified' : 'Pending'}
+                    </Badge>
                   </div>
                   <div className="mt-2 text-[11px] text-gray-600 dark:text-gray-300 space-y-0.5">
                     <p>Vehicle: <strong>{vehicle ? `${vehicle.type} · ${vehicle.number}` : 'Not assigned'}</strong></p>
@@ -481,16 +487,16 @@ export default function AdminDashboard() {
             })}
             {drivers.length === 0 && <p className="text-xs text-gray-500 dark:text-muted">No driver accounts yet.</p>}
           </div>
-        </section>
+        </Card>
       )}
 
       {tab === 'bookings' && (
-        <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+        <Card className="p-4">
           <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3">Freight request ledger</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-gray-100 dark:border-[#1E293B] text-gray-400 dark:text-muted text-left"><th className="py-2.5 px-3">Request</th><th className="py-2.5 px-3">Farmer</th><th className="py-2.5 px-3">Cargo</th><th className="py-2.5 px-3">Corridor</th><th className="py-2.5 px-3">Quote</th><th className="py-2.5 px-3">Status</th></tr></thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-[#1E293B]">
+              <thead><tr className="border-b border-gray-100 dark:border-charcoal-800 text-gray-400 dark:text-muted text-left"><th className="py-2.5 px-3">Request</th><th className="py-2.5 px-3">Farmer</th><th className="py-2.5 px-3">Cargo</th><th className="py-2.5 px-3">Corridor</th><th className="py-2.5 px-3">Quote</th><th className="py-2.5 px-3">Status</th></tr></thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-charcoal-800">
                 {requests.map((request) => (
                   <tr key={request.id}>
                     <td className="py-2.5 px-3 font-mono text-[10px] text-bright">{request.id}</td>
@@ -505,11 +511,11 @@ export default function AdminDashboard() {
             </table>
             {requests.length === 0 && <p className="text-center text-xs text-gray-500 dark:text-muted py-6">No transport requests yet.</p>}
           </div>
-        </section>
+        </Card>
       )}
 
       {tab === 'audit' && (
-        <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+        <Card className="p-4">
           <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
             <div>
               <h2 className="text-sm font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><History size={15} className="text-bright" /> Audit trail</h2>
@@ -574,21 +580,21 @@ export default function AdminDashboard() {
               {auditLogs.map((log) => <AuditEvent key={log.id} log={log} />)}
             </ol>
           )}
-        </section>
+        </Card>
       )}
 
       {tab === 'support' && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-3 shadow-sm">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+          <Card className="p-3">
             <div className="flex items-center justify-between gap-2 mb-2">
               <h2 className="text-sm font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><LifeBuoy size={15} className="text-amber" /> Support desk</h2>
-              <button onClick={refreshSupport} disabled={ticketBusy === 'refresh'} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-[10px] font-bold text-gray-600 disabled:opacity-50 dark:border-[#1E293B] dark:text-gray-300 hover:border-bright">
+              <button onClick={refreshSupport} disabled={ticketBusy === 'refresh'} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-[10px] font-bold text-gray-600 disabled:opacity-50 dark:border-charcoal-800 dark:text-gray-300 hover:border-bright">
                 <RefreshCw size={11} className={ticketBusy === 'refresh' ? 'animate-spin text-bright' : ''} /> Refresh
               </button>
             </div>
             <div className="mb-2 flex flex-wrap gap-1">
               {TICKET_FILTERS.map((filter) => (
-                <button key={filter.id} onClick={() => setTicketStatusFilter(filter.id)} className={`rounded-lg px-2 py-1 text-[10px] font-bold transition ${ticketStatusFilter === filter.id ? 'bg-electric text-white' : 'bg-gray-100 text-gray-600 dark:bg-[#07172F] dark:text-muted hover:text-white'}`}>
+                <button key={filter.id} onClick={() => setTicketStatusFilter(filter.id)} className={`rounded-lg px-2 py-1 text-[10px] font-bold transition ${ticketStatusFilter === filter.id ? 'bg-electric text-white' : 'bg-gray-100 text-gray-600 dark:bg-midnight dark:text-muted hover:text-white'}`}>
                   {filter.label} <span className="opacity-70">{ticketCounts[filter.id]}</span>
                 </button>
               ))}
@@ -598,7 +604,7 @@ export default function AdminDashboard() {
                 <button
                   key={ticket.id}
                   onClick={() => openTicket(ticket.id)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${selectedTicketId === ticket.id ? 'border-bright bg-blue-50/70 dark:border-bright/60 dark:bg-electric/20' : 'border-gray-100 bg-gray-50 hover:border-bright/40 dark:border-[#1E293B] dark:bg-[#07172F]'}`}
+                  className={`w-full rounded-xl border p-3 text-left transition ${selectedTicketId === ticket.id ? 'border-bright bg-blue-50/70 dark:border-bright/60 dark:bg-electric/20' : 'border-gray-100 bg-gray-50 hover:border-bright/40 dark:border-charcoal-800 dark:bg-midnight'}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[10px] text-gray-400 dark:text-muted">{ticket.id}</span>
@@ -610,16 +616,16 @@ export default function AdminDashboard() {
                 </button>
               ))}
               {filteredTickets.length === 0 && (
-                <div className="rounded-xl border border-dashed border-gray-300 py-10 text-center dark:border-[#1E293B]">
+                <div className="rounded-xl border border-dashed border-gray-300 py-10 text-center dark:border-charcoal-800">
                   <LifeBuoy className="mx-auto mb-2 text-gray-400 dark:text-muted" size={22} />
                   <p className="text-xs font-bold text-gray-700 dark:text-gray-200">No tickets in this view</p>
                   <p className="mt-1 text-[11px] text-gray-500 dark:text-muted">Farmers and drivers can raise tickets from the API; they appear here instantly.</p>
                 </div>
               )}
             </div>
-          </div>
+          </Card>
 
-          <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 shadow-sm">
+          <Card className="p-4">
             {ticketLoading ? (
               <div className="flex items-center justify-center py-16 text-xs text-gray-500 dark:text-muted"><RefreshCw className="mr-2 animate-spin text-bright" size={14} /> Loading ticket…</div>
             ) : !ticketDetail ? (
@@ -703,8 +709,8 @@ export default function AdminDashboard() {
                 )}
               </>
             )}
-          </div>
-        </section>
+          </Card>
+        </div>
       )}
     </div>
   )

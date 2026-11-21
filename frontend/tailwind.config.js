@@ -82,6 +82,13 @@ export default {
         },
         muted: '#A7B4C5',
         offwhite: '#F8FAFC',
+        // Semantic Surface Tokens
+        surface: {
+          canvas: 'var(--color-bg)',
+          card: 'var(--color-card)',
+          border: 'var(--color-border)',
+          muted: 'var(--color-text-muted)'
+        },
         // Compatibility bridge: map forest & agri to modern electric/navy so no existing class breaks
         forest: {
           50: '#E6EDF5',
@@ -124,6 +131,17 @@ export default {
       fontFamily: {
         sans: ['Inter', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
         display: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif']
+      },
+      boxShadow: {
+        'card': '0 2px 10px -2px rgba(7, 23, 47, 0.08), 0 1px 3px -1px rgba(7, 23, 47, 0.04)',
+        'card-hover': '0 12px 28px -6px rgba(7, 23, 47, 0.14), 0 4px 10px -2px rgba(7, 23, 47, 0.06)',
+        'card-dark': '0 4px 20px -4px rgba(0, 0, 0, 0.55)',
+        'amber-glow': '0 4px 14px 0 rgba(255, 152, 0, 0.28)',
+        'blue-glow': '0 4px 14px 0 rgba(6, 79, 174, 0.28)'
+      },
+      borderRadius: {
+        '2.5xl': '1.25rem',
+        '4xl': '2rem'
       }
     }
   },

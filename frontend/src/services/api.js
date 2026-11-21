@@ -140,7 +140,17 @@ export const api = {
     list: () => api.get('/vehicles')
   },
   drivers: {
-    list: () => api.get('/drivers')
+    list: () => api.get('/drivers'),
+    updateAvailability: (body) => api.put('/driver/availability', body)
+  },
+  nearby: {
+    search: (params = {}) => {
+      const search = new URLSearchParams()
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && String(v).trim() !== '') search.set(k, v)
+      })
+      return api.get(`/nearby${search.toString() ? `?${search}` : ''}`)
+    }
   },
   trips: {
     list: () => api.get('/trips'),

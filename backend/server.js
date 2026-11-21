@@ -1137,6 +1137,168 @@ app.get('/api/vehicles', authMiddleware, (req, res) => {
   res.json(vehicleOps.listAll());
 });
 
+// ─── DRIVER AVAILABILITY ─────────────────────────────────────────────────────
+app.put('/api/driver/availability', authMiddleware, requireRole('driver'), [
+  body('status').isIn(['available', 'busy', 'offline']).withMessage('status must be available, busy or offline'),
+  body('latitude').optional({ nullable: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
+  body('longitude').optional({ nullable: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be between -180 and 180')
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ detail: errors.array()[0].msg, errors: errors.array() });
+
+  const { status, latitude, longitude } = req.body;
+  const now = new Date().toISOString();
+  const fields = {
+    availability_status: status,
+    last_location_at: now
+  };
+  if (latitude !== undefined && latitude !== null) fields.last_lat = Number(latitude);
+  if (longitude !== undefined && longitude !== null) fields.last_lng = Number(longitude);
+
+  vehicleOps.updateAvailability(req.user.username, fields);
+  userOps.update(req.user.username, fields);
+
+  const { roundCoordinate } = require('./services/geo');
+  res.json({
+    status,
+    last_location_at: now,
+    latitude_approx: fields.last_lat != null ? roundCoordinate(fields.last_lat) : null,
+    longitude_approx: fields.last_lng != null ? roundCoordinate(fields.last_lng) : null
+  });
+});
+
+// ─── NEARBY SEARCH ───────────────────────────────────────────────────────────
+app.get('/api/nearby', authMiddleware, (req, res) => {
+  const { haversineDistance, getBoundingBox, roundCoordinate, geocode, resolveLocal } = require('./services/geo');
+  const rawRadius = parseFloat(req.query.radius_km);
+  const radiusKm = Number.isFinite(rawRadius) ? Math.min(rawRadius, 150) : 150;
+
+  const role = req.user.role;
+  const db = getDb();
+
+  if (role === 'farmer') {
+    // Find farmer's center: first farm, then village geocode
+    const farms = db.prepare('SELECT latitude, longitude FROM farms WHERE farmer = ? AND latitude != 0 ORDER BY created_at ASC LIMIT 1').get(req.user.username);
+    let centerLat = farms ? farms.latitude : null;
+    let centerLng = farms ? farms.longitude : null;
+
+    // Fallback: try user's village from local dictionary synchronously
+    if (!centerLat || !centerLng) {
+      const userRow = db.prepare('SELECT village, district, state FROM users WHERE username = ?').get(req.user.username);
+      const place = [userRow?.village, userRow?.district, userRow?.state].filter(Boolean).join(', ');
+      if (place) {
+        const local = resolveLocal(place);
+        if (local) { centerLat = local.lat; centerLng = local.lng; }
+      }
+    }
+
+    if (!centerLat || !centerLng) {
+      return res.json({ results: [], center: null, radius_km: radiusKm, message: 'No location found for your account. Add a farm or update your village.' });
+    }
+
+    const bb = getBoundingBox(centerLat, centerLng, radiusKm);
+    // Query: available drivers with approved profile and valid permit, location fresh within 30 min
+    const rows = db.prepare(`
+      SELECT v.id as vehicle_id, v.driver as driver_username, v.type as vehicle_type, v.capacity,
+             v.last_lat, v.last_lng, v.verified,
+             u.full_name,
+             dp.verification_status
+      FROM vehicles v
+      JOIN users u ON u.username = v.driver
+      LEFT JOIN driver_profiles dp ON dp.username = v.driver
+      WHERE v.availability_status = 'available'
+        AND v.last_lat IS NOT NULL AND v.last_lng IS NOT NULL
+        AND v.last_lat BETWEEN ? AND ?
+        AND v.last_lng BETWEEN ? AND ?
+        AND v.last_location_at >= datetime('now', '-30 minutes')
+        AND v.driver IS NOT NULL
+        AND dp.verification_status = 'approved'
+        AND EXISTS (
+          SELECT 1 FROM driver_permits dp2
+          WHERE dp2.driver_username = v.driver
+            AND dp2.status = 'approved'
+            AND dp2.expiry_date > date('now')
+        )
+    `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng);
+
+    const results = rows
+      .map(row => {
+        const dist = haversineDistance(centerLat, centerLng, row.last_lat, row.last_lng);
+        return { ...row, distance_km: Math.round(dist * 10) / 10 };
+      })
+      .filter(row => row.distance_km <= radiusKm)
+      .sort((a, b) => a.distance_km - b.distance_km)
+      .map(row => ({
+        type: 'driver',
+        driver_username: row.driver_username,
+        full_name: row.full_name,
+        vehicle_id: row.vehicle_id,
+        vehicle_type: row.vehicle_type,
+        capacity: row.capacity,
+        verified: Boolean(row.verified),
+        distance_km: row.distance_km,
+        approx_lat: roundCoordinate(row.last_lat),
+        approx_lng: roundCoordinate(row.last_lng)
+        // phone intentionally excluded — privacy
+      }));
+
+    return res.json({
+      results,
+      center: { lat: roundCoordinate(centerLat), lng: roundCoordinate(centerLng) },
+      radius_km: radiusKm
+    });
+
+  } else if (role === 'driver') {
+    // Find driver's last known location from their vehicle
+    const vehicle = db.prepare('SELECT last_lat, last_lng FROM vehicles WHERE driver = ? AND last_lat IS NOT NULL').get(req.user.username);
+    if (!vehicle) {
+      return res.json({ results: [], center: null, radius_km: radiusKm, message: 'Share your location first to find nearby jobs.' });
+    }
+    const centerLat = vehicle.last_lat;
+    const centerLng = vehicle.last_lng;
+
+    const bb = getBoundingBox(centerLat, centerLng, radiusKm);
+    const rows = db.prepare(`
+      SELECT id, crop, quantity, unit, pickup, pickup_date, pickup_lat, pickup_lng, farmer
+      FROM transport_requests
+      WHERE status = 'pending'
+        AND pickup_lat IS NOT NULL AND pickup_lng IS NOT NULL
+        AND pickup_lat BETWEEN ? AND ?
+        AND pickup_lng BETWEEN ? AND ?
+    `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng);
+
+    const results = rows
+      .map(row => {
+        const dist = haversineDistance(centerLat, centerLng, row.pickup_lat, row.pickup_lng);
+        return { ...row, distance_km: Math.round(dist * 10) / 10 };
+      })
+      .filter(row => row.distance_km <= radiusKm)
+      .sort((a, b) => a.distance_km - b.distance_km)
+      .map(row => ({
+        type: 'request',
+        id: row.id,
+        crop: row.crop,
+        quantity: row.quantity,
+        unit: row.unit,
+        pickup: row.pickup,   // place name only, no exact address
+        pickup_date: row.pickup_date,
+        distance_km: row.distance_km,
+        approx_lat: roundCoordinate(row.pickup_lat),
+        approx_lng: roundCoordinate(row.pickup_lng)
+        // farmer username and phone intentionally excluded — privacy
+      }));
+
+    return res.json({
+      results,
+      center: { lat: roundCoordinate(centerLat), lng: roundCoordinate(centerLng) },
+      radius_km: radiusKm
+    });
+
+  } else {
+    return res.status(403).json({ detail: 'Only farmers and drivers can use nearby search' });
+  }
+});
+
 app.get('/api/drivers', authMiddleware, (req, res) => {
   const drivers = userOps.listByRole('driver').map(userOps.safe);
   // Strip phone numbers from non-admin view

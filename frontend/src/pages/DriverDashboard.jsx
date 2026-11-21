@@ -7,7 +7,7 @@ import {
 import { api } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
-import { PageHeader, StatCard, LoadingBlock, StatusBadge } from '../components/ui'
+import { PageHeader, StatCard, LoadingBlock, StatusBadge, Card, Button, Badge } from '../components/ui'
 import { formatINR } from '../utils/currency'
 import toast from 'react-hot-toast'
 
@@ -73,16 +73,20 @@ export default function DriverDashboard() {
         title={t('driver.overview')}
         subtitle="Live jobs and trips from the database. Earnings count only completed trips; nothing is annualised or projected."
         actions={
-          <>
-            <Link to="/driver/jobs" className="btn-primary px-3 py-2 text-xs font-bold"><Truck size={15} /> {t('driver.availableJobs')}</Link>
-            <Link to="/driver/routes" className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200 hover:border-bright transition"><RouteIcon size={15} className="text-bright" /> {t('driver.routePlanner')}</Link>
-          </>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/driver/jobs" className="btn-primary text-xs font-bold py-2 px-3 min-h-[36px]">
+              <Truck size={15} /> {t('driver.availableJobs')}
+            </Link>
+            <Link to="/driver/routes" className="btn-secondary text-xs font-bold py-2 px-3 min-h-[36px]">
+              <RouteIcon size={15} className="text-bright-300" /> {t('driver.routePlanner')}
+            </Link>
+          </div>
         }
       />
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 mb-4">{error} <button onClick={load} className="font-bold underline">{t('common.retry')}</button></div>}
 
-      <div className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-4 mb-4 flex flex-wrap items-center gap-4 shadow-sm">
+      <Card className="p-4 mb-4 flex flex-wrap items-center gap-4">
         <span className="w-11 h-11 rounded-xl bg-electric text-white grid place-items-center text-sm font-bold shadow-xs">{(user?.full_name || user?.username || 'D').slice(0, 1).toUpperCase()}</span>
         <div className="flex-1 min-w-[200px]">
           <p className="text-sm font-bold text-gray-900 dark:text-white">{user?.full_name || user?.username}</p>
@@ -91,10 +95,10 @@ export default function DriverDashboard() {
             {user?.rating ? ` · ${user.rating}★` : ' · not rated'}
           </p>
         </div>
-        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold border ${user?.verified ? 'bg-blue-50 text-electric border-bright/30 dark:bg-electric/20 dark:text-bright' : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300'}`}>
-          <ShieldCheck size={12} className={user?.verified ? 'text-bright' : 'text-amber'} /> {user?.verified ? t('driver.verified') : t('driver.notVerified')}
-        </span>
-      </div>
+        <Badge variant={user?.verified ? 'primary' : 'amber'} icon={ShieldCheck}>
+          {user?.verified ? t('driver.verified') : t('driver.notVerified')}
+        </Badge>
+      </Card>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
         <StatCard label={t('driver.availableJobs')} value={jobs.length} hint="Pending requests" icon={Truck} tone="amber" />
@@ -104,7 +108,7 @@ export default function DriverDashboard() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5">
-        <section className="lg:col-span-2 rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+        <Card className="lg:col-span-2 p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t('driver.availableJobs')}</h2>
             <Link to="/driver/jobs" className="text-[11px] font-bold text-bright hover:underline">{t('common.viewAll')} ({jobs.length})</Link>
@@ -114,7 +118,7 @@ export default function DriverDashboard() {
           ) : (
             <div className="space-y-3">
               {jobs.slice(0, 3).map((job) => (
-                <div key={job.id} className="rounded-xl border border-gray-100 dark:border-[#1E293B] bg-gray-50 dark:bg-[#07172F] p-3">
+                <div key={job.id} className="rounded-xl border border-gray-100 dark:border-charcoal-800 bg-gray-50 dark:bg-midnight p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold text-gray-900 dark:text-white">{job.crop} · {Number(job.quantity).toLocaleString()} {job.unit || 'kg'}</p>
@@ -127,7 +131,7 @@ export default function DriverDashboard() {
                     </div>
                   </div>
                   <div className="flex justify-end gap-2 mt-2">
-                    <button onClick={() => pass(job)} className="rounded-lg bg-gray-200 dark:bg-[#1E293B] hover:bg-gray-300 dark:hover:bg-gray-700 px-2.5 py-1.5 text-[11px] font-bold text-gray-700 dark:text-gray-300 inline-flex items-center gap-1 transition"><X size={12} /> {t('driver.passJob')}</button>
+                    <button onClick={() => pass(job)} className="rounded-lg bg-gray-200 dark:bg-charcoal-800 hover:bg-gray-300 dark:hover:bg-charcoal-700 px-2.5 py-1.5 text-[11px] font-bold text-gray-700 dark:text-gray-300 inline-flex items-center gap-1 transition"><X size={12} /> {t('driver.passJob')}</button>
                     <button onClick={() => accept(job)} className="btn-primary px-3 py-1.5 text-[11px] font-bold inline-flex items-center gap-1"><Check size={12} /> {t('driver.acceptJob')}</button>
                   </div>
                 </div>
@@ -135,14 +139,14 @@ export default function DriverDashboard() {
             </div>
           )}
           {!myVehicle && <p className="mt-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 p-2.5 text-[11px] text-amber-800 dark:text-amber-300 flex gap-1.5"><Info size={14} className="shrink-0 text-amber" /> Add a vehicle in your profile before accepting a job. The app will not invent a vehicle.</p>}
-        </section>
+        </Card>
 
         <div className="space-y-4">
-          <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+          <Card className="p-5">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Navigation size={16} className="text-bright" /> {t('driver.activeTrips')}</h2>
             {activeTrips.length === 0 ? <p className="text-xs text-gray-500 dark:text-muted py-4">{t('driver.noJobs')}</p> : (
               activeTrips.slice(0, 2).map((trip) => (
-                <div key={trip.id} className="rounded-xl border border-blue-100 dark:border-[#1E293B] bg-blue-50/40 dark:bg-[#07172F] p-3 mb-2">
+                <div key={trip.id} className="rounded-xl border border-blue-100 dark:border-charcoal-800 bg-blue-50/40 dark:bg-midnight p-3 mb-2">
                   <div className="flex items-center justify-between gap-2"><p className="text-[11px] font-bold text-gray-900 dark:text-white">Trip {trip.id}</p><StatusBadge status={trip.status} /></div>
                   <p className="text-[11px] mt-1 text-gray-700 dark:text-gray-300">{trip.pickup} → {trip.destination}</p>
                   <p className="text-[10px] text-gray-500 dark:text-muted mt-1">{trip.distance_km ?? '—'} km · ETA {trip.eta_hours ?? '—'} h</p>
@@ -150,20 +154,20 @@ export default function DriverDashboard() {
                 </div>
               ))
             )}
-          </section>
+          </Card>
 
-          <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+          <Card className="p-5">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2"><RouteIcon size={16} className="text-bright" /> {t('driver.routePlanner')}</h2>
             <p className="text-[11px] text-gray-500 dark:text-muted leading-relaxed">Real OSRM road routing with a labelled Haversine fallback. Fuel, toll and CO₂ numbers are deterministic estimates, not NPU output.</p>
             <Link to="/driver/routes" className="btn-secondary mt-3 inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold">{t('driver.getRoute')} <ArrowRight size={13} /></Link>
-          </section>
+          </Card>
 
-          <section className="rounded-2xl border border-gray-200 dark:border-[#1E293B] bg-white dark:bg-[#111827] p-5 shadow-sm">
+          <Card className="p-5">
             <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-muted">Profile signals</p>
             <p className="mt-2 text-xs flex items-center gap-1.5"><Star size={13} className="text-amber" /> Rating: <strong>{user?.rating ?? 'Not rated'}</strong></p>
             <p className="mt-1 text-xs">Trips completed: <strong>{user?.trips_completed ?? completedTrips.length}</strong></p>
             <p className="mt-1 text-[10px] text-gray-400 dark:text-muted">Only fields present on your account are shown; missing values are not filled with demo numbers.</p>
-          </section>
+          </Card>
         </div>
       </div>
     </div>
